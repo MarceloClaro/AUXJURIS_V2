@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { FileUploadArea } from './components/FileUploadArea';
 import { ChatInterface } from './components/ChatInterface';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -9,21 +9,10 @@ import { ComparisonResultModal } from './components/ComparisonResultModal';
 import { InternalBookSelector } from './components/InternalBookSelector';
 import { AIResponseHistory } from './components/AIResponseHistory'; // New Component
 import { AgentSelector } from './components/AgentSelector'; // Novo componente para seleção de agentes
-import type { ChatMessage, UploadedDocument, RagData, SwotAnalysis, ComparisonSource, LegalAgent, PredefinedBook, RagDataItem } from './types';
+import type { ChatMessage, UploadedDocument, SwotAnalysis, ComparisonSource, PredefinedBook, RagDataItem } from './types';
 import { MessageSender } from './types';
 import {
-  MASTER_LEGAL_EXPERT_SYSTEM_INSTRUCTION,
-  RAG_PREAMBLE,
   MAX_FILES,
-  SUMMARIZER_PROMPT_TEMPLATE,
-  INSIGHTS_EXTRACTOR_PROMPT_TEMPLATE,
-  SWOT_ANALYSIS_PROMPT_TEMPLATE,
-  COMPARISON_PROMPT_TEMPLATE,
-  MASTER_LEGAL_EXPERT_REVIEW_TASK_PROMPT_TEMPLATE,
-  GEMINI_CHAT_MODEL_GENERAL,
-  GEMINI_ANALYSIS_MODEL,
-  MAX_TEXT_LENGTH_FOR_DIRECT_ANALYSIS,
-  MAX_CHARS_FOR_SUMMARIZATION_INPUT,
   LEGAL_AGENTS,
   DEFAULT_AGENT_ID,
 } from './constants';
@@ -67,7 +56,6 @@ const extractTextFromPdfBook = async (pdfBuffer: ArrayBuffer): Promise<string> =
 
 const App: React.FC = () => {
   const [uploadedDocuments, setUploadedDocuments] = useState<UploadedDocument[]>([]);
-  const [ragData, setRagData] = useState<RagData | null>(null);
   const [isProcessingFiles, setIsProcessingFiles] = useState<boolean>(false);
 
   const [currentAgentId, setCurrentAgentId] = useState<string>(DEFAULT_AGENT_ID);
@@ -89,7 +77,7 @@ const App: React.FC = () => {
   const [docBProcessing, setDocBProcessing] = useState<boolean>(false);
   const [docBError, setDocBError] = useState<string | null>(null);
 
-  const { speak, cancelSpeech, isSpeaking, ttsError } = useTextToSpeech();
+  const { speak, cancelSpeech, isSpeaking } = useTextToSpeech();
 
   // Encontrar o agente selecionado com base no ID atual
   const selectedAgent = useMemo(() => {
@@ -228,16 +216,6 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    const userDocsRag: RagDataItem[] = uploadedDocuments
-      .filter((doc: UploadedDocument) => !!doc.text)
-      .map((doc: UploadedDocument) => ({
-        documentName: doc.name,
-        content: doc.text!,
-        sourceType: 'user_document',
-        summary: doc.summary,
-        insights: doc.insights,
-        swot: doc.swot,
-      }));
 
     const internalBooksRag: RagDataItem[] = [];
     selectedBookIds.forEach((bookId: string) => {
@@ -251,9 +229,6 @@ const App: React.FC = () => {
         });
       }
     });
-
-    const combinedRagData = [...userDocsRag, ...internalBooksRag];
-    setRagData(combinedRagData.length > 0 ? combinedRagData : null);
 
   }, [uploadedDocuments, selectedBookIds, internalBooksData]);
 
@@ -433,42 +408,57 @@ const App: React.FC = () => {
 
       addMessageToUi(MessageSender.SYSTEM, `Iniciando análise de "${currentDocToAnalyze.name}"...`);
 
-      if (currentDocToAnalyze.text.length > MAX_TEXT_LENGTH_FOR_DIRECT_ANALYSIS) {
-        addMessageToUi(MessageSender.SYSTEM, `Documento "${currentDocToAnalyze.name}" é longo, gerando resumo inicial...`);
-        currentSummary = await callBackendAnalysisAPI('summary', currentDocToAnalyze.text);
-        textForAnalysis = currentSummary; 
-        addMessageToUi(MessageSender.SYSTEM, `Resumo de "${currentDocToAnalyze.name}" gerado e refinado.`);
-      } else {
-        currentSummary = await callBackendAnalysisAPI('summary', currentDocToAnalyze.text);
-        addMessageToUi(MessageSender.SYSTEM, `Resumo de "${currentDocToAnalyze.name}" gerado e refinado.`);
-      }
+      // The check for MAX_TEXT_LENGTH_FOR_DIRECT_ANALYSIS and initial summarization is handled in the backend now.
 
-      currentInsights = await callBackendAnalysisAPI('insights', textForAnalysis, currentSummary);
+      const summaryResult = await callBackendAnalysisAPI('summary', currentDocToAnalyze.text);
+       if (typeof summaryResult === 'string') { // Ensure it's a string before assigning
+        currentSummary = summaryResult;
+      } else {
+         throw new Error("Received non-string summary from backend.");
+      }
+      addMessageToUi(MessageSender.SYSTEM, `Resumo de "${currentDocToAnalyze.name}" gerado e refinado.`);
+
+      const insightsResult = await callBackendAnalysisAPI('insights', textForAnalysis, currentSummary);
+       if (typeof insightsResult === 'string') { // Ensure it's a string before assigning
+        currentInsights = insightsResult;
+      } else {
+        throw new Error("Received non-string insights from backend.");
+      }
       addMessageToUi(MessageSender.SYSTEM, `Insights de "${currentDocToAnalyze.name}" gerados e refinados.`);
-cls
-      const swotFullText = await callBackendAnalysisAPI('swot', textForAnalysis, currentSummary, currentInsights);
+
+      const swotResult = await callBackendAnalysisAPI('swot', textForAnalysis, currentSummary, currentInsights);
       addMessageToUi(MessageSender.SYSTEM, `Análise SWOT de "${currentDocToAnalyze.name}" gerada e refinada.`);
 
-      const swotResult: SwotAnalysis = {};
-      const swotSections = ["Forças:", "Fraquezas:", "Oportunidades:", "Ameaças:"];
-      let currentSectionKey: keyof SwotAnalysis | null = null;
-      swotFullText.split('\n').forEach(line => {
-        const trimmedLine = line.trim();
-        const matchedSection = swotSections.find(s => trimmedLine.toLowerCase().startsWith(s.toLowerCase().replace(':', '')));
-        if (matchedSection) {
-          currentSectionKey = matchedSection.toLowerCase().replace(':', '') as keyof SwotAnalysis;
-          const contentAfterTitle = trimmedLine.substring(matchedSection.length).trim();
-          swotResult[currentSectionKey!] = (swotResult[currentSectionKey!] || "") + (contentAfterTitle ? contentAfterTitle + "\n" : "");
-        } else if (currentSectionKey && trimmedLine) {
-          swotResult[currentSectionKey!] += trimmedLine + "\n";
-        }
-      });
-      for (const key in swotResult) {
-          swotResult[key as keyof SwotAnalysis] = cleanAiText(swotResult[key as keyof SwotAnalysis]?.trim() || "");
+      const swotAnalysis: SwotAnalysis = {}; // Initialize as SwotAnalysis object
+      if (typeof swotResult !== 'string' && swotResult !== null && typeof swotResult === 'object') { // Check if it's an object (SwotAnalysis)
+          // Assuming the backend returns a correctly structured SwotAnalysis object now
+          Object.assign(swotAnalysis, swotResult);
+      } else if (typeof swotResult === 'string') {
+          // Fallback for parsing string format if needed, but backend should return object
+          const swotSections = ["Forças:", "Fraquezas:", "Oportunidades:", "Ameaças:"];
+          let currentSectionKey: keyof SwotAnalysis | null = null;
+          swotResult.split('\n').forEach(line => { // Use swotResult here, it's a string in this branch
+            const trimmedLine = line.trim();
+            const matchedSection = swotSections.find(s => trimmedLine.toLowerCase().startsWith(s.toLowerCase().replace(':', '')));
+            if (matchedSection) {
+              currentSectionKey = matchedSection.toLowerCase().replace(':', '') as keyof SwotAnalysis;
+              const contentAfterTitle = trimmedLine.substring(matchedSection.length).trim();
+              swotAnalysis[currentSectionKey!] = (swotAnalysis[currentSectionKey!] || "") + (contentAfterTitle ? contentAfterTitle + "\n" : "");
+            } else if (currentSectionKey && trimmedLine) {
+              swotAnalysis[currentSectionKey!] += trimmedLine + "\n";
+            }
+          });
+          for (const key in swotAnalysis) {
+              swotAnalysis[key as keyof SwotAnalysis] = cleanAiText(swotAnalysis[key as keyof SwotAnalysis]?.trim() || "");
+          }
+      } else {
+          console.error("Unexpected SWOT analysis result format:", swotResult);
+          throw new Error("Received unexpected SWOT analysis format from backend.");
       }
 
+
       setUploadedDocuments(prevDocs =>
-        prevDocs.map(d => d.id === documentId ? { ...d, summary: cleanAiText(currentSummary || currentDocToAnalyze.summary || ""), insights: cleanAiText(currentInsights || ""), swot: swotResult, processingAnalysis: false, analysisError: null } : d)
+        prevDocs.map(d => d.id === documentId ? { ...d, summary: cleanAiText(currentSummary || currentDocToAnalyze.summary || ""), insights: cleanAiText(currentInsights || ""), swot: swotAnalysis, processingAnalysis: false, analysisError: null } : d) // Assign swotAnalysis object
       );
       addMessageToUi(MessageSender.SYSTEM, `Análise completa de "${currentDocToAnalyze.name}" finalizada.`);
     } catch (error) {
@@ -605,32 +595,32 @@ cls
     addMessageToUi(MessageSender.SYSTEM, `Iniciando comparação entre "${docAName}" e "${docBName}"...`);
 
     try {
-      const comparisonPrompt = COMPARISON_PROMPT_TEMPLATE(
-        docAName, documentForComparisonA_Text,
-        docBName, documentForComparisonB.text
-      );
-      
-      addMessageToUi(MessageSender.SYSTEM, `Realizando comparação primária...`);
-      const initialResponse = await genAI.models.generateContent({
-        model: GEMINI_ANALYSIS_MODEL, 
-        contents: comparisonPrompt,
-        config: { safetySettings: modelConfig.safetySettings }
+      // Call the backend comparison endpoint
+      const response = await fetch('http://localhost:3001/api/compare', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          documentAText: documentForComparisonA_Text,
+          documentBText: documentForComparisonB.text,
+          docAName: docAName,
+          docBName: docBName,
+          agentId: currentAgentId, // Send the current agent ID
+        }),
       });
-      const rawComparison = initialResponse.text.trim() || "Não foi possível gerar a comparação inicial.";
 
-      addMessageToUi(MessageSender.SYSTEM, `Refinando comparação com o Pro. Marcelo Claro...`);
-      const reviewPrompt = MASTER_LEGAL_EXPERT_REVIEW_TASK_PROMPT_TEMPLATE(rawComparison, "Comparação Jurídica");
-      const reviewedResponse = await genAI.models.generateContent({
-        model: GEMINI_ANALYSIS_MODEL,
-        contents: reviewPrompt,
-        config: { 
-            safetySettings: modelConfig.safetySettings,
-            systemInstruction: MASTER_LEGAL_EXPERT_SYSTEM_INSTRUCTION
-        }
-      });
-      const finalComparison = cleanAiText(reviewedResponse.text.trim() || rawComparison);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Backend comparison error: ${response.status}`);
+      }
 
-      setComparisonResult(finalComparison);
+      const data = await response.json();
+      const comparisonText = data.comparison;
+
+      const finalComparisonResult = comparisonText || "Não foi possível obter o resultado da comparação do backend.";
+
+      setComparisonResult(finalComparisonResult);
       addMessageToUi(MessageSender.SYSTEM, `Comparação entre "${docAName}" e "${docBName}" concluída.`);
 
     } catch (error: any) {
@@ -648,6 +638,7 @@ cls
     documentForComparisonB, 
     uploadedDocuments, 
     addMessageToUi,
+    currentAgentId,
   ]);
 
   const handleAgentChange = (event: React.ChangeEvent<HTMLSelectElement>) => {

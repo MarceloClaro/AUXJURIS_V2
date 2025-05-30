@@ -28,7 +28,7 @@ const port = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // Get API key from environment variables
 const apiKey = process.env.GOOGLE_API_KEY || 'AIzaSyDKZim-kg3vMXkPqQt3gNDHNqhWF7dnE9M';
@@ -197,6 +197,22 @@ Lembre-se: TODAS as suas respostas devem ser em português brasileiro, utilizand
 // Usar a instrução do agente mestre como padrão
 const MASTER_LEGAL_EXPERT_SYSTEM_INSTRUCTION = LEGAL_AGENTS.master.instruction;
 
+// New comparison prompt template for the backend
+const COMPARISON_PROMPT_TEMPLATE_BACKEND = (docAName: string, docAText: string, docBName: string, docBText: string): string => 
+  `Como um especialista jurídico avançado, compare os dois documentos a seguir. Realize uma análise detalhada das semelhanças, diferenças, pontos chave, conflitos (se houver) e implicações legais de cada documento em relação ao outro. Organize sua resposta de forma clara, destacando os pontos de comparação.
+
+Documento A (${docAName}):
+---
+${docAText}
+---
+
+Documento B (${docBName}):
+---
+${docBText}
+---
+
+Análise de Comparação Detalhada:`;
+
 const SUMMARIZER_PROMPT_TEMPLATE = (documentText: string): string => 
   `Por favor, resuma o seguinte documento. O foco principal do resumo deve ser nos pontos essenciais e na finalidade do documento.
 
@@ -313,22 +329,23 @@ async function callGeminiWithReview(
 // Chat endpoint
 app.post('/api/chat', async (req, res) => {
   try {
-    let { prompt, agentId = 'master' } = req.body;
-    
+    let { prompt, agentId: rawAgentId } = req.body; // Use rawAgentId for the potentially unvalidated input
+
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt é obrigatório.' });
     }
-    
-    // Verificar se o agente solicitado existe
-    if (!LEGAL_AGENTS[agentId]) {
-      console.log(`Agente ${agentId} não encontrado, usando agente mestre como fallback`);
-      agentId = 'master';
+
+    // Validate and fallback agentId
+    let agentId: keyof typeof LEGAL_AGENTS = 'master'; // Default to master
+    const validAgentKeys = Object.keys(LEGAL_AGENTS) as Array<keyof typeof LEGAL_AGENTS>;
+    if (typeof rawAgentId === 'string' && validAgentKeys.includes(rawAgentId as keyof typeof LEGAL_AGENTS)) {
+      agentId = rawAgentId as keyof typeof LEGAL_AGENTS; // Assign and assert
     }
-    
-    // Obter a instrução do agente selecionado
+
+    // Obter a instrução e nome do agente selecionado using the validated agentId
     const agentInstruction = LEGAL_AGENTS[agentId].instruction;
     const agentName = LEGAL_AGENTS[agentId].name;
-    
+
     console.log(`Recebida solicitação de chat para o agente ${agentName} com prompt: ${prompt.substring(0, 100)}...`);
 
     // Preparar o modelo
@@ -505,6 +522,41 @@ app.post('/api/analyze/swot', async (req, res) => {
   } catch (error) {
     console.error("Erro ao gerar análise SWOT:", error);
     res.status(500).json({ error: 'Falha ao gerar análise SWOT.' });
+  }
+});
+
+// --- New Comparison Endpoint ---
+
+app.post('/api/compare', async (req, res) => {
+  try {
+    const { documentAText, documentBText, docAName, docBName, agentId: rawAgentId } = req.body;
+
+    if (!documentAText || !documentBText) {
+      return res.status(400).json({ error: 'Os textos dos dois documentos (documentAText, documentBText) são obrigatórios para comparação.' });
+    }
+
+    // Validate and fallback agentId
+    let agentId: keyof typeof LEGAL_AGENTS = 'master'; // Default to master
+    const validAgentKeys = Object.keys(LEGAL_AGENTS) as Array<keyof typeof LEGAL_AGENTS>;
+    if (typeof rawAgentId === 'string' && validAgentKeys.includes(rawAgentId as keyof typeof LEGAL_AGENTS)) {
+      agentId = rawAgentId as keyof typeof LEGAL_AGENTS; // Assign and assert
+    }
+
+    console.log(`Recebida solicitação de comparação para o agente ${LEGAL_AGENTS[agentId].name}`);
+
+    const taskPrompt = COMPARISON_PROMPT_TEMPLATE_BACKEND(
+      docAName || 'Documento A',
+      documentAText,
+      docBName || 'Documento B',
+      documentBText
+    );
+
+    const comparisonResult = await callGeminiWithReview(taskPrompt, "Comparação Jurídica");
+
+    res.json({ comparison: comparisonResult });
+  } catch (error) {
+    console.error("Erro ao realizar comparação:", error);
+    res.status(500).json({ error: 'Falha ao realizar comparação.' });
   }
 });
 
