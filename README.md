@@ -135,7 +135,7 @@ O AuxJuris V2 foi construído com uma arquitetura modular e altamente extensíve
 
 ---
 
-## 🚀 Rodando Localmente
+## 🚀 Rodando Localmente. (Abra o Terminal ou prompt de comando do Windows e cole os itens abaixo)
 
 ```bash
 # Clonar o repositório
