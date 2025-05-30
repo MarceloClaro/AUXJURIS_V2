@@ -1,11 +1,3 @@
-Claro, Prof. Marcelo. Abaixo está a **versão completa e otimizada para o `README.md` do repositório [AuxJuris V2](https://github.com/MarceloClaro/AUXJURIS_V2)**, incluindo:
-
-* descrição geral;
-* funções principais;
-* estrutura técnica detalhada com base real;
-* práticas de segurança em RAG;
-* e **insights específicos para desenvolvedores** sobre extensibilidade, arquitetura e oportunidades de inovação.
-
 ---
 
 <div align="center">
