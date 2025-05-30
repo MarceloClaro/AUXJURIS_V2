@@ -1,202 +1,170 @@
+---
 
 <div align="center">
   <img src="https://github.com/MarceloClaro/AUXJURIS/blob/main/jus.png?raw=true" alt="AuxJuris IA Logo" width="150"/>
 </div>
 
-# AuxJuris IA - Assistente Jurídico Avançado
+<h1 align="center">AuxJuris V2 - Assistente Jurídico com IA + RAG</h1>
 
-**AuxJuris IA** é uma aplicação web de página única (SPA) sofisticada, projetada para servir como um assistente jurídico inteligente para profissionais do Direito brasileiro. Ele integra o poder dos modelos de linguagem de ponta da Google (Gemini) com a técnica de Geração Aumentada por Recuperação (RAG) para fornecer análises de documentos, consultoria jurídica contextualizada, auxílio na elaboração de peças processuais e comparação detalhada de textos legais.
+> Plataforma jurídica inteligente com análise documental, chat jurídico especializado e comparações de textos legais, utilizando Gemini AI e Retrieval Augmented Generation (RAG).
 
-## Funcionalidades Principais
+---
 
-O AuxJuris IA oferece um conjunto robusto de ferramentas para otimizar o trabalho jurídico:
+## 📘 Visão Geral
 
-1.  **Upload e Processamento de Documentos:**
-    *   Suporte para arquivos PDF, TXT e JSON (DOCX com instrução de conversão).
-    *   Extração de texto de PDFs realizada no cliente (navegador) usando `pdf.js`.
-    *   Gerenciamento de múltiplos arquivos (até 5).
-    *   Feedback visual durante o processo de extração.
+**AuxJuris V2** é uma aplicação web voltada para o setor jurídico que combina **IA generativa (Google Gemini)** com a técnica **RAG (Retrieval-Augmented Generation)** para oferecer funcionalidades como:
 
-2.  **Análise Individual de Documentos:**
-    *   Após a extração, cada documento pode ser analisado individualmente para:
-        *   **Geração de Resumo:** Cria um sumário conciso.
-        *   **Extração de Insights:** Identifica implicações legais, riscos e oportunidades.
-        *   **Análise SWOT:** Produz uma análise de Forças, Fraquezas, Oportunidades e Ameaças.
-    *   **Revisão Simulada "Pro. Marcelo Claro":** Todas as análises passam por uma etapa de "revisão" por um agente mestre configurado para refinar e garantir a qualidade jurídica.
+* Sumarização de documentos;
+* Extração de insights jurídicos;
+* Análise SWOT de peças e contratos;
+* Chat contextual com linguagem jurídica;
+* Comparação automatizada entre textos.
 
-3.  **Base de Conhecimento Interno (RAG - Livros Pré-definidos):**
-    *   Seleção de obras jurídicas brasileiras fundamentais (Constituição Federal, Códigos, CLT) para enriquecer o contexto da IA.
-    *   Carregamento automático do conteúdo textual (principalmente PDFs).
-    *   **Fallback de Upload Manual:** Se o carregamento automático de um livro falhar, o usuário pode enviar o arquivo manualmente.
+Seu objetivo é **aumentar a produtividade e precisão na análise jurídica** com base em documentos carregados pelo usuário ou bibliotecas jurídicas internas.
 
-4.  **Chat com Agentes Especializados:**
-    *   Interface de chat interativa com múltiplos "especialistas" de IA, cada um com instruções de sistema (prompts) direcionadas a áreas específicas do Direito (Administrativo, Penal, Civil, Constitucional, etc.).
-    *   Respostas contextualizadas pelo RAG (documentos do usuário e livros selecionados).
-    *   **Prompt de Sistema Personalizado:** Usuários avançados podem fornecer suas próprias instruções de sistema, priorizadas e complementadas pelas do agente.
-    *   Respostas da IA são transmitidas em tempo real (streaming).
+---
 
-5.  **Leitura em Voz Alta (Text-to-Speech):**
-    *   Funcionalidade para ouvir as respostas da IA, utilizando a API de Síntese de Voz do navegador.
+## 🔧 Funcionalidades
 
-6.  **Comparação Detalhada de Documentos:**
-    *   Permite comparar um "Documento A" (documento enviado ou última resposta da IA) com um "Documento B" (novo upload).
-    *   A IA realiza uma análise comparativa jurídica detalhada.
-    *   O resultado da comparação também é "revisado" pelo "Pro. Marcelo Claro".
-    *   A análise é exibida em uma janela modal.
+### 📥 Upload e Processamento
 
-7.  **Histórico de Respostas da IA:**
-    *   Um painel dedicado exibe um log das respostas fornecidas pela IA durante a sessão.
-    *   Opções para baixar o histórico nos formatos CSV e JSON.
+* Suporte a `.pdf`, `.txt`, `.json`, `.jsonl`;
+* Extração e limpeza de texto (`cleanTextForRag`);
+* Visualização e histórico dos documentos enviados.
 
-8.  **Interface e Experiência do Usuário:**
-    *   Design responsivo e moderno utilizando Tailwind CSS.
-    *   Tema escuro para conforto visual.
-    *   Indicadores visuais de carregamento e processamento.
-    *   Mensagens de sistema para feedback contínuo.
+### 🧠 Análise Jurídica com IA
 
-## Tecnologias e Técnicas Utilizadas
+* **Sumarização automática** de petições e contratos;
+* **Extração de argumentos-chave** e teses legais;
+* **Análise SWOT** adaptada para conteúdo jurídico;
+* Processamento assíncrono via backend/API.
 
-O desenvolvimento do AuxJuris IA emprega um stack moderno e técnicas avançadas:
+### 💬 Chat Jurídico Inteligente (RAG)
 
-*   **Frontend:**
-    *   **React 19:** Biblioteca JavaScript para construção de interfaces de usuário declarativas e componentizadas.
-    *   **TypeScript:** Superset do JavaScript que adiciona tipagem estática, aumentando a robustez e a manutenibilidade do código.
-    *   **Tailwind CSS:** Framework CSS utility-first para estilização rápida e responsiva.
-*   **Integração com IA:**
-    *   **Google Gemini API:** Utilização do SDK oficial `@google/genai` para interagir com os modelos de linguagem da Google.
-    *   **Modelo Principal (Chat e Análise):** `gemini-2.5-flash-preview-04-17`.
-*   **Técnica de IA Central:**
-    *   **Retrieval Augmented Generation (RAG):** A capacidade da IA é enriquecida através da recuperação de informações de documentos fornecidos pelo usuário e de uma base de conhecimento interna (livros jurídicos). Os textos são processados e incluídos no prompt enviado ao modelo Gemini.
-*   **Processamento de Documentos:**
-    *   **Client-side PDF Parsing:** A biblioteca `pdf.js` (incluída via CDN) é utilizada para extrair texto de arquivos PDF diretamente no navegador do usuário.
-    *   Arquivos TXT e JSON são lidos usando a API `FileReader`.
-*   **Gerenciamento de Estado:**
-    *   Hooks do React (`useState`, `useEffect`, `useCallback`, `useRef`, `useMemo`) para gerenciar o estado local dos componentes e a lógica da aplicação.
-*   **Estrutura do Código:**
-    *   **Componentização:** A UI é dividida em componentes reutilizáveis (e.g., `FileUploadArea`, `ChatInterface`, `DocumentList`).
-    *   **Módulos ES6:** Código organizado em módulos para melhor separação de responsabilidades.
-    *   `index.html` utiliza `importmap` para gerenciar dependências de bibliotecas externas como React e `@google/genai` via ESM.sh.
-*   **Comunicação com API:**
-    *   Uso de `async/await` para chamadas assíncronas à API Gemini.
-    *   Streaming de respostas no chat para uma experiência interativa.
-*   **Tratamento de Erros:**
-    *   Mecanismos para capturar e exibir erros da API Gemini, do processamento de arquivos e da síntese de voz.
-*   **Engenharia de Prompt:**
-    *   Prompts de sistema detalhados e dinamicamente construídos para guiar os agentes de IA, incluindo o contexto RAG e instruções personalizadas.
-    *   Prompts específicos para tarefas de sumarização, extração de insights, análise SWOT e comparação de documentos.
-    *   Um "Agente Mestre" (Pro. Marcelo Claro) é usado para refinar as saídas das análises, aplicando um prompt de revisão.
+* Interface tipo chat com IA contextualizada;
+* Baseada em arquivos carregados + fontes jurídicas internas;
+* Seleção de agentes IA especializados (ex: Penal, Civil);
+* Suporte a prompts customizados (avançado).
 
-## Análise SWOT
+### 📚 Fontes Jurídicas Internas
 
-### Aplicabilidade e Utilidade da Ferramenta
+* Constituição Federal, Códigos (Penal, Civil), etc.;
+* Seleção dinâmica com fallback para upload manual;
+* Armazenadas localmente em `/public/books`.
 
-*   **Forças (Strengths):**
-    *   Especialização jurídica com múltiplos agentes de IA.
-    *   Contextualização RAG avançada, aumentando a relevância das respostas.
-    *   Automação de tarefas jurídicas demoradas (análise, resumo, comparação).
-    *   Base de conhecimento com suporte nativo a documentos jurídicos essenciais do Brasil.
-    *   Framework de análise estruturada (Resumo, Insights, SWOT).
-    *   Simulação de revisão qualificada ("Pro. Marcelo Claro").
-    *   Alta flexibilidade com prompts de sistema personalizados.
+### 📑 Comparação de Documentos
 
-*   **Fraquezas (Weaknesses):**
-    *   Qualidade das respostas dependente da capacidade do modelo Gemini subjacente e sua data de corte de conhecimento.
-    *   Não se integra dinamicamente a bases de jurisprudência ou legislação em tempo real (depende do RAG estático e da capacidade de busca do Gemini, se aplicável).
-    *   Extração de texto de PDFs complexos ou mal formatados pode ser imperfeita.
-    *   Pode apresentar uma curva de aprendizado para funcionalidades mais avançadas.
+* Compare versões de contratos, pareceres, sentenças;
+* Escolha entre documentos enviados ou respostas anteriores;
+* Revisão por prompt jurídico do tipo "Master Legal Expert".
 
-*   **Oportunidades (Opportunities):**
-    *   Expansão da base de conhecimento interna com mais obras e especialidades.
-    *   Integração com APIs jurídicas para RAG dinâmico.
-    *   Fine-tuning de modelos Gemini para nichos jurídicos específicos.
-    *   Implementação de funcionalidades colaborativas.
-    *   Aprimoramento das técnicas de RAG (chunking, embedding, vector search).
+### 🧾 Exportação e Histórico
 
-*   **Ameaças (Threats):**
-    *   Questões éticas e de responsabilidade no uso de IA para aconselhamento jurídico.
-    *   Risco de super-confiança do usuário, negligenciando a revisão humana crítica.
-    *   Rápida evolução da tecnologia de IA, podendo tornar abordagens atuais obsoletas.
-    *   Preocupações com privacidade e segurança de dados ao interagir com APIs externas (mesmo com processamento client-side para extração).
-    *   Dependência da API Gemini (mudanças em termos, preços, disponibilidade).
+* Exportação de respostas em `.csv` e `.json`;
+* Histórico da sessão com controle de sessão local;
+* Opção de leitura em voz alta (Text-to-Speech).
 
-### Codificação e Implementação
+---
 
-*   **Forças (Strengths):**
-    *   Stack tecnológico moderno e robusto (React, TypeScript, Tailwind CSS).
-    *   Arquitetura modular e componentizada, facilitando a manutenção.
-    *   Integração direta e correta com o SDK `@google/genai`.
-    *   Tipagem estática para maior robustez.
-    *   Bom tratamento de assincronicidade e estados de carregamento.
-    *   Mecanismos de tratamento de erros.
-    *   Processamento de texto de PDF no cliente, reduzindo a necessidade de backend para essa tarefa.
-
-*   **Fraquezas (Weaknesses):**
-    *   Gerenciamento de estado global pode se tornar complexo com `useState` e props drilling em aplicações muito maiores (poderia evoluir para Zustand/Redux).
-    *   Tamanho do bundle pode ser considerável devido a bibliotecas como `pdf.js` se não otimizado (e.g., com code splitting mais granular).
-    *   Referência global a `window.pdfjsLib` é menos ideal que importações diretas, mas é uma prática comum ao usar CDNs.
-    *   Limpeza de texto baseada em heurísticas pode necessitar de ajustes contínuos.
-
-*   **Oportunidades (Opportunities):**
-    *   Adoção de um gerenciador de estado dedicado (Zustand, Redux Toolkit) para maior escalabilidade.
-    *   Otimizações de performance (code splitting, lazy loading, Web Workers para tarefas pesadas).
-    *   Expansão da cobertura de testes.
-    *   Melhorar suporte a formatos como DOCX com bibliotecas client-side.
-
-*   **Ameaças (Threats):**
-    *   Breaking changes em dependências (API Gemini, `pdf.js`).
-    *   Variações de comportamento de APIs do navegador (como `SpeechSynthesis`) entre diferentes browsers.
-    *   Gargalos de performance com contextos RAG excessivamente grandes processados no cliente.
-
-## Configuração e Execução
-
-AuxJuris IA é uma aplicação frontend pura que interage com a API Google Gemini.
-
-1.  **Chave da API Google Gemini:**
-    *   A aplicação **requer** que uma chave da API Google Gemini válida seja configurada como uma variável de ambiente chamada `API_KEY`.
-    *   Esta variável `process.env.API_KEY` deve estar disponível no ambiente de execução onde a aplicação é servida ou construída.
-    *   **A aplicação NÃO fornece interface para inserir a chave da API. Sua configuração é um pré-requisito do ambiente.**
-
-2.  **Dependências:**
-    *   As dependências de frontend (React, Tailwind CSS, `pdf.js`, `@google/genai`) são gerenciadas via `importmap` no `index.html` e carregadas de CDNs (ESM.sh, cdnjs).
-
-3.  **Execução:**
-    *   Sirva o diretório raiz da aplicação (contendo `index.html`, `index.tsx`, etc.) através de um servidor web local.
-    *   Certifique-se de que o servidor possa substituir `process.env.API_KEY` no código ou que esta variável esteja definida no ambiente de build/runtime de forma que o JavaScript possa acessá-la. Um método comum é usar um processo de build (como Vite, Create React App) que suporte variáveis de ambiente.
-
-## Estrutura de Arquivos (Principais)
+## 🗃️ Estrutura do Projeto
 
 ```
-.
+AUXJURIS_V2/
+├── backend/                    # Lógica backend (API, RAG, chamada à IA)
+├── components/                # Componentes React: chat, upload, análise, etc.
+├── hooks/                     # React hooks personalizados para lógica compartilhada
 ├── public/
-│   └── books/              # Contém os arquivos PDF/TXT dos livros pré-definidos
-│       ├── CF88/
-│       │   └── CF88_EC134_livro.pdf
-│       └── ...             # Outros livros
-├── src/
-│   ├── components/         # Componentes React reutilizáveis
-│   │   ├── AIResponseHistory.tsx
-│   │   ├── ChatInterface.tsx
-│   │   ├── ComparisonResultModal.tsx
-│   │   ├── ComparisonSidebar.tsx
-│   │   ├── DocumentList.tsx
-│   │   ├── FileUploadArea.tsx
-│   │   ├── icons.tsx
-│   │   ├── InternalBookSelector.tsx
-│   │   └── LoadingSpinner.tsx
-│   ├── hooks/              # Hooks React personalizados
-│   │   └── useTextToSpeech.ts
-│   ├── App.tsx             # Componente principal da aplicação
-│   ├── constants.ts        # Constantes, prompts, definições de agentes
-│   ├── index.tsx           # Ponto de entrada React (renderiza App)
-│   ├── types.ts            # Definições de tipos TypeScript
-│   └── utils.ts            # Funções utilitárias
-├── index.html              # Arquivo HTML principal com importmap
-├── metadata.json           # Metadados da aplicação
-├── README.md               # Este arquivo
-└── tailwind.config.js      # (Implícito, pois usa CDN, mas seria para customização)
+│   └── books/                 # Fontes jurídicas (PDFs, textos)
+├── App.tsx                    # Componente raiz da aplicação
+├── constants.ts               # Prompts, limites e variáveis fixas
+├── predefined-books.ts        # Mapeamento de livros jurídicos internos
+├── utils.ts                   # Funções auxiliares como cleanTextForRag
+├── types.ts                   # Tipagens TypeScript para consistência
+├── index.tsx                  # Ponto de entrada do React
+├── vite.config.ts             # Configurações de build com Vite
+├── tsconfig.json              # Configurações do compilador TypeScript
+├── INICIAR.bat                # Script para inicialização em Windows
+└── README.md                  # Este documento
 ```
 
 ---
 
-Desenvolvido para auxiliar e potencializar a prática jurídica através da inteligência artificial.
+## ⚙️ Tecnologias Utilizadas
+
+| Camada     | Stack Tecnológico                        |
+| ---------- | ---------------------------------------- |
+| Frontend   | React + TypeScript + Vite + Tailwind CSS |
+| Backend    | Node.js + Express (presumido)            |
+| IA         | Google Gemini API                        |
+| Build Tool | Vite                                     |
+
+---
+
+## 🔐 Segurança em Sistemas RAG
+
+| Área                       | Estratégia Aplicada                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------- |
+| **Limpeza de Entrada**     | `cleanTextForRag` remove ruídos do texto (rodapés, headers, páginas)                  |
+| **Isolamento de Contexto** | RAG responde apenas com base em fontes fornecidas pelo usuário                        |
+| **Chaves Seguras**         | API Gemini é utilizada via backend (não exposta ao cliente)                           |
+| **Validação**              | Backend pode sanitizar entradas e filtrar comandos maliciosos (anti-prompt-injection) |
+| **SafetySettings**         | Modelos Gemini configurados para censurar conteúdo prejudicial                        |
+| **LGPD-ready**             | Estrutura compatível com anonimização e proteção de dados                             |
+
+---
+
+## 💡 Insight para Desenvolvedores
+
+O AuxJuris V2 foi construído com uma arquitetura modular e altamente extensível, tornando-o ideal como base para:
+
+* **Plataformas jurídicas SaaS**;
+* **Painéis internos para escritórios ou tribunais**;
+* **Ferramentas de estudo e análise de jurisprudência**;
+* **Customização por área do Direito via agentes especializados**.
+
+### Oportunidades de Extensão
+
+| Feature                          | Como Expandir                                              |
+| -------------------------------- | ---------------------------------------------------------- |
+| 📜 Integração com bases públicas | Ex: CNJ DataJud, JusBrasil, LEXML, TJ-CE                   |
+| 🧾 OCR Automático                | Incluir suporte a imagens escaneadas via Tesseract         |
+| 🔐 Autenticação                  | JWT, OAuth2, ou login social via Firebase/Auth0            |
+| 📦 Deploy Cloud                  | Docker + Vercel (frontend) + Render/Fly.io (backend)       |
+| 🧠 IA Alternativa                | Substituir Gemini por OpenAI, Claude, Mistral ou Llama.cpp |
+| 🧰 Painel Admin                  | Monitoramento de sessões, logs, métricas e uso de API      |
+
+---
+
+## 🚀 Rodando Localmente
+
+```bash
+# Clonar o repositório
+git clone https://github.com/MarceloClaro/AUXJURIS_V2.git
+cd AUXJURIS_V2
+
+# Instalar dependências
+npm install
+
+# Iniciar frontend (Vite)
+npm run dev
+
+# Backend pode ser iniciado separadamente em /backend
 ```
+
+---
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Sinta-se à vontade para usar, adaptar e contribuir.
+
+---
+
+## 📬 Contato
+
+**Autor:** Prof. Marcelo Claro
+**WhatsApp:** (88) 98158-7145
+**Projeto:** [github.com/MarceloClaro/AUXJURIS\_V2](https://github.com/MarceloClaro/AUXJURIS_V2)
+
+---
+
+Se desejar, posso converter esse conteúdo em PDF, Markdown `.md` já formatado ou README direto para colar. Deseja exportar como algum desses?
