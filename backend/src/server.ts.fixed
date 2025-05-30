@@ -1,0 +1,251 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+
+// Load environment variables
+dotenv.config();
+
+const app = express();
+const port = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Initialize Google AI
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
+
+// --- Constants from Frontend (Adjusted as needed) ---
+const GEMINI_ANALYSIS_MODEL = 'gemini-2.5-flash-preview-04-17'; // Use the same model as frontend constants
+const MASTER_LEGAL_EXPERT_SYSTEM_INSTRUCTION = `Saída e respostas: Português Brasileiro Jurídico.
+
+Persona: Este GPT, chamado Direito Administrativo e Concursos Públicos, é um assistente de inteligência artificial avançado, especialmente projetado para fornecer suporte especializado no campo do Direito Administrativo e preparação para concursos públicos. Com a integração da técnica RAG (Recuperar, Agregar e Gerar), este GPT oferece serviços únicos como análise de documentos, consultoria jurídica, e elaboração de peças processuais. Ele é capaz de analisar legislações e jurisprudências atualizadas, comparar documentos legais, oferecer orientações em casos específicos de concursos e responsabilidade civil do Estado, e desenvolver petições iniciais e revisão de contratos administrativos.`;
+
+const SUMMARIZER_PROMPT_TEMPLATE = (documentText: string): string => 
+  `Por favor, resuma o seguinte documento. O foco principal do resumo deve ser nos pontos essenciais e na finalidade do documento.
+
+Documento:
+---
+${documentText}
+---
+Resumo Detalhado:`;
+
+const INSIGHTS_EXTRACTOR_PROMPT_TEMPLATE = (documentText: string, summaryText?: string): string => 
+  `Por favor, extraia os principais insights, implicações e pontos de discussão do seguinte documento (e seu resumo, se fornecido).
+
+Documento:
+---
+${documentText}
+---${summaryText ? `
+Resumo do Documento:
+---
+${summaryText}
+---` : ''}
+Principais Insights e Implicações:`;
+
+const SWOT_ANALYSIS_PROMPT_TEMPLATE = (documentText: string, summaryText?: string, insightsText?: string): string => 
+  `Por favor, realize uma análise SWOT (Forças, Fraquezas, Oportunidades, Ameaças) com base no seguinte documento (e seu resumo/insights, se fornecidos).
+
+Documento:
+---
+${documentText}
+---${summaryText ? `
+Resumo do Documento:
+---
+${summaryText}
+---` : ''}${insightsText ? `
+Insights Extraídos:
+---
+${insightsText}
+---` : ''}
+Análise SWOT Detalhada (liste cada ponto claramente sob o respectivo título - Forças, Fraquezas, Oportunidades, Ameaças):`;
+
+const MASTER_LEGAL_EXPERT_REVIEW_TASK_PROMPT_TEMPLATE = (original_analysis_text: string, analysis_type: string): string => 
+  `Como um revisor especializado e experiente Prof. Marcelo Claro no direito brasileiro, revise e aprimore o seguinte texto de análise/resposta para garantir a precisão jurídica, clareza, profundidade e aderência ao contexto de ${analysis_type}. Corrija quaisquer imprecisões, adicione insights relevantes e formate a resposta de maneira profissional e juridicamente robusta. O texto original para revisão é:
+
+---
+${original_analysis_text}
+---
+
+Sua revisão e aprimoramento (resposta final):`;
+
+const MAX_CHARS_FOR_SUMMARIZATION_INPUT = 200000; // Max chars do doc original para a *primeira* sumarização
+
+const modelConfig = {
+  safetySettings: [
+    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+  ],
+};
+
+// --- Helper function to call Gemini with review step ---
+async function callGeminiWithReview(
+  taskPrompt: string,
+  analysisTypeForReview: string
+): Promise<string> {
+  let rawAnalysisText = "";
+  try {
+    const model = genAI.getGenerativeModel({ model: GEMINI_ANALYSIS_MODEL });
+    const result = await model.generateContent({
+      contents: [
+        { role: 'user', parts: [{ text: taskPrompt }] }
+      ],
+      safetySettings: modelConfig.safetySettings
+    });
+    const response = result.response;
+    if (!response.text) {
+        throw new Error("API did not return text in the response.");
+    }
+    rawAnalysisText = response.text().trim() || "";
+  } catch (error) {
+    console.error(`Error in initial Gemini API call for ${analysisTypeForReview}:`, error);
+    throw new Error(`Falha na análise primária de ${analysisTypeForReview}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  let reviewedText = "";
+  try {
+    const reviewUserPrompt = MASTER_LEGAL_EXPERT_REVIEW_TASK_PROMPT_TEMPLATE(rawAnalysisText, analysisTypeForReview);
+    const reviewModel = genAI.getGenerativeModel({
+      model: GEMINI_ANALYSIS_MODEL,
+    });
+    // Pass system instruction as the first item in the contents array
+    const reviewedResult = await reviewModel.generateContent({
+      contents: [
+        { role: 'system', parts: [{ text: MASTER_LEGAL_EXPERT_SYSTEM_INSTRUCTION }] },
+        { role: 'user', parts: [{ text: reviewUserPrompt }] },
+      ],
+      safetySettings: modelConfig.safetySettings
+    });
+    const reviewedResponse = reviewedResult.response;
+     if (!reviewedResponse.text) {
+        console.log(`Review API did not return text. Using raw analysis for ${analysisTypeForReview}.`);
+        return rawAnalysisText; // Use raw if review fails to return text
+    }
+    reviewedText = reviewedResponse.text().trim() || rawAnalysisText; // Use raw if text is empty
+
+  } catch (error) {
+    console.error(`Error in Master Agent review for ${analysisTypeForReview}:`, error);
+    console.log(`Falha na revisão pelo Pro. Marcelo Claro para ${analysisTypeForReview.toLowerCase()}. Exibindo resultado primário.`);
+    return rawAnalysisText; // Return raw analysis if review fails
+  }
+
+  return reviewedText;
+}
+
+// Chat endpoint
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt é obrigatório.' });
+    }
+
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    res.json({ reply: text });
+  } catch (error) {
+    console.error("Erro ao interagir com a IA:", error);
+    res.status(500).json({ error: 'Falha ao processar a requisição.' });
+  }
+});
+
+// --- New Analysis Endpoints ---
+
+app.post('/api/analyze/summary', async (req, res) => {
+  try {
+    const { documentText } = req.body;
+
+    if (!documentText) {
+      return res.status(400).json({ error: 'documentText é obrigatório para sumarização.' });
+    }
+
+    let effectiveDocumentText = documentText;
+    if (documentText.length > MAX_CHARS_FOR_SUMMARIZATION_INPUT) {
+      effectiveDocumentText = documentText.substring(0, MAX_CHARS_FOR_SUMMARIZATION_INPUT);
+      console.log(`Documento truncado para ${effectiveDocumentText.length} caracteres para sumarização.`);
+    }
+
+    const taskPrompt = SUMMARIZER_PROMPT_TEMPLATE(effectiveDocumentText);
+    const summary = await callGeminiWithReview(taskPrompt, "Resumo");
+
+    res.json({ summary });
+  } catch (error) {
+    console.error("Erro ao gerar resumo:", error);
+    res.status(500).json({ error: 'Falha ao gerar resumo.' });
+  }
+});
+
+app.post('/api/analyze/insights', async (req, res) => {
+  try {
+    const { documentText, summaryText } = req.body;
+
+    if (!documentText) {
+      return res.status(400).json({ error: 'documentText é obrigatório para extrair insights.' });
+    }
+
+    // Assuming documentText passed here might be a summary if original was too long
+    const taskPrompt = INSIGHTS_EXTRACTOR_PROMPT_TEMPLATE(documentText, summaryText);
+    const insights = await callGeminiWithReview(taskPrompt, "Insights");
+
+    res.json({ insights });
+  } catch (error) {
+    console.error("Erro ao extrair insights:", error);
+    res.status(500).json({ error: 'Falha ao extrair insights.' });
+  }
+});
+
+interface SwotAnalysis {
+  [key: string]: string;
+}
+
+app.post('/api/analyze/swot', async (req, res) => {
+  try {
+    const { documentText, summaryText, insightsText } = req.body;
+
+    if (!documentText) {
+      return res.status(400).json({ error: 'documentText é obrigatório para análise SWOT.' });
+    }
+     // Assuming documentText passed here might be a summary if original was too long
+    const taskPrompt = SWOT_ANALYSIS_PROMPT_TEMPLATE(documentText, summaryText, insightsText);
+    const swot = await callGeminiWithReview(taskPrompt, "Análise SWOT");
+
+    // Basic parsing of SWOT text into object (can be improved)
+    const swotResult: SwotAnalysis = {};
+    const sections = ["Forças:", "Fraquezas:", "Oportunidades:", "Ameaças:"];
+    let currentSection = "";
+    swot.split('\n').forEach(line => {
+      const trimmedLine = line.trim();
+      const matchedSection = sections.find(s => trimmedLine.startsWith(s));
+      if (matchedSection) {
+        currentSection = matchedSection.replace(':', '').trim();
+        swotResult[currentSection] = trimmedLine.substring(matchedSection.length).trim() + '\n';
+      } else if (currentSection && trimmedLine) {
+        swotResult[currentSection] += trimmedLine + '\n';
+      }
+    });
+     for (const key in swotResult) {
+        swotResult[key] = swotResult[key]?.trim() || "";
+     }
+
+    res.json({ swot: swotResult });
+  } catch (error) {
+    console.error("Erro ao gerar análise SWOT:", error);
+    res.status(500).json({ error: 'Falha ao gerar análise SWOT.' });
+  }
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+app.listen(port, () => {
+  console.log(`Servidor backend rodando em http://localhost:${port}`);
+});

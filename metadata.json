@@ -1,0 +1,6 @@
+{
+  "name": "2AuxJuris IA",
+  "description": "Assistente jurídico avançado com múltiplos especialistas em Direito Brasileiro. Análise de documentos (RAG), consultoria e elaboração de peças processuais.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}

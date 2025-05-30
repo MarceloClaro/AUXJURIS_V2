@@ -1,0 +1,7 @@
+Para que o aplicativo funcione corretamente, você precisa criar um arquivo .env no diretório do backend com o seguinte conteúdo:
+
+GOOGLE_API_KEY=sua_chave_api_do_google_gemini_aqui
+PORT=3001
+
+Substitua "sua_chave_api_do_google_gemini_aqui" por uma chave API válida do Google Gemini.
+Você pode obter uma chave em: https://aistudio.google.com/app/apikey
