@@ -166,5 +166,3 @@ Este projeto está sob a licença MIT. Sinta-se à vontade para usar, adaptar e 
 **Projeto:** [github.com/MarceloClaro/AUXJURIS\_V2](https://github.com/MarceloClaro/AUXJURIS_V2)
 
 ---
-
-Se desejar, posso converter esse conteúdo em PDF, Markdown `.md` já formatado ou README direto para colar. Deseja exportar como algum desses?
