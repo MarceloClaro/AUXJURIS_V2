@@ -1,35 +1,33 @@
 @echo off
-title Iniciando AuxJuris IA
+chcp 65001 >nul
 
-echo ==================================================
-echo  INICIANDO O AMBIENTE DE DESENVOLVIMENTO AUXJURIS IA
-echo ==================================================
-echo.
+REM ===============================
+REM  INICIANDO AUXJURIS IA COMPLETO
+REM ===============================
 
-REM Navega para a pasta raiz do seu projeto
-REM ATENCAO: Verifique se este caminho esta correto!
-cd "C:\Users\marce\Downloads\Udemy Download\Marllus Lustosa\2auxjuris-ia (1)"
+REM Caminho do Qdrant (ajuste se necessário)
+set QDRANT_PATH="C:\Users\marce\Downloads\Udemy Download\Marllus Lustosa\qdrant-x86_64-pc-windows-msvc\qdrant.exe"
 
-REM Verifica se o Node.js e npm estao acessiveis (opcional, para diagnostico)
-echo Verificando versoes do Node.js e npm...
-node -v
-npm -v
-echo.
+REM Verifica se a porta 6333 (Qdrant) está em uso
+netstat -ano | findstr :6333 >nul
+if %errorlevel%==0 (
+    echo Porta 6333 já está em uso. Qdrant pode já estar rodando.
+) else (
+    REM 1. Iniciar Qdrant
+    start "Qdrant" %QDRANT_PATH%
+    echo Qdrant iniciado.
+)
 
-REM Instala as dependencias do projeto (frontend e backend via postinstall)
-echo Instalando/verificando dependencias do projeto...
-echo Isso pode levar alguns minutos na primeira vez ou se houver muitas atualizações.
-echo.
-npm install
-echo.
+REM 2. Iniciar backend em nova janela
+start "Backend" cmd /k "cd /d %~dp0 && npm --prefix backend run dev"
+echo Backend iniciado.
 
-REM Executa o script de desenvolvimento que inicia frontend e backend
-echo Iniciando servidores de frontend e backend...
-echo Por favor, aguarde. Isso pode levar alguns instantes.
-echo Os logs dos servidores aparecerão nesta janela.
-echo.
-npm run dev
+REM 3. Iniciar frontend em nova janela
+start "Frontend" cmd /k "cd /d %~dp0 && npm run dev:frontend"
+echo Frontend iniciado.
 
-REM O comando 'npm run dev' geralmente mantém a janela aberta.
-REM Se ele fechar inesperadamente, descomente a linha abaixo para ver erros.
+echo ===============================
+echo Todos os serviços foram iniciados!
+echo Qdrant, backend e frontend estão rodando.
+echo ===============================
 pause

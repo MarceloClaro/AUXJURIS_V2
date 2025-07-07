@@ -2,14 +2,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { FileUploadArea } from './components/FileUploadArea';
 import { ChatInterface } from './components/ChatInterface';
-import LoadingSpinner from './components/LoadingSpinner';
 import { DocumentList } from './components/DocumentList';
-import { ComparisonSidebar } from './components/ComparisonSidebar';
 import { ComparisonResultModal } from './components/ComparisonResultModal';
 import { InternalBookSelector } from './components/InternalBookSelector';
 import { AIResponseHistory } from './components/AIResponseHistory'; // New Component
 import { AgentSelector } from './components/AgentSelector'; // Novo componente para seleção de agentes
-import type { ChatMessage, UploadedDocument, SwotAnalysis, ComparisonSource, PredefinedBook, RagDataItem } from './types';
+import { LLMConfigSelector } from './components/LLMConfigSelector';
+import type { ChatMessage, UploadedDocument, SwotAnalysis, PredefinedBook, RagDataItem } from './types';
 import { MessageSender } from './types';
 import {
   MAX_FILES,
@@ -41,6 +40,7 @@ const cleanTextForRag = (text: string | undefined | null): string => {
 };
 
 const extractTextFromPdfBook = async (pdfBuffer: ArrayBuffer): Promise<string> => {
+  console.time('extractTextFromPdfBook');
   if (typeof window.pdfjsLib === 'undefined' || !window.pdfjsLib.getDocument) {
     throw new Error("pdf.js não carregado. Por favor, verifique sua conexão ou a inclusão da biblioteca.");
   }
@@ -51,7 +51,9 @@ const extractTextFromPdfBook = async (pdfBuffer: ArrayBuffer): Promise<string> =
     const textContent = await page.getTextContent();
     fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n';
   }
-  return cleanTextForRag(fullText.trim());
+  const cleanedText = cleanTextForRag(fullText.trim());
+  console.timeEnd('extractTextFromPdfBook');
+  return cleanedText;
 };
 
 const App: React.FC = () => {
@@ -65,30 +67,15 @@ const App: React.FC = () => {
   const [currentUiMessages, setCurrentUiMessages] = useState<ChatMessage[]>([]);
   const [isLoadingChat, setIsLoadingChat] = useState<boolean>(false);
 
-  const [documentForComparisonA_Id, setDocumentForComparisonA_Id] = useState<string | null>(null);
-  const [documentForComparisonA_Source, setDocumentForComparisonA_Source] = useState<ComparisonSource>(null);
-  const [documentForComparisonA_Text, setDocumentForComparisonA_Text] = useState<string>('');
-  const [documentForComparisonB, setDocumentForComparisonB] = useState<UploadedDocument | null>(null);
-  const [isComparing, setIsComparing] = useState<boolean>(false);
-  const [comparisonResult, setComparisonResult] = useState<string>('');
-  const [comparisonError, setComparisonError] = useState<string | null>(null);
-  const [showComparisonModal, setShowComparisonModal] = useState<boolean>(false);
-
-  const [docBProcessing, setDocBProcessing] = useState<boolean>(false);
-  const [docBError, setDocBError] = useState<string | null>(null);
-
   const { speak, cancelSpeech, isSpeaking } = useTextToSpeech();
-
-  // Encontrar o agente selecionado com base no ID atual
-  const selectedAgent = useMemo(() => {
-    return LEGAL_AGENTS.find(agent => agent.id === currentAgentId) || 
-           LEGAL_AGENTS.find(agent => agent.id === DEFAULT_AGENT_ID) || 
-           LEGAL_AGENTS[0];
-  }, [currentAgentId]);
 
   const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
   const [internalBooksData, setInternalBooksData] = useState<Map<string, { content: string | null; isLoading: boolean; error: string | null; name: string }>>(new Map());
   const [systemMessage, setSystemMessage] = useState<string | null>(null);
+
+  const [internalSources, setInternalSources] = useState<string[]>([]);
+
+  const [chatInput, setChatInput] = useState('');
 
   const cleanAiText = (text: string): string => {
     if (typeof text !== 'string') return '';
@@ -109,13 +96,22 @@ const App: React.FC = () => {
     return cleaned.trim();
   };
 
-  const addMessageToUi = useCallback((sender: MessageSender, text: string, id?: string, sources?: { uri: string; title: string }[]): ChatMessage => {
+  const addMessageToUi = useCallback((
+    sender: MessageSender,
+    text: string,
+    id?: string,
+    sources?: { uri: string; title: string }[],
+    rawResponse?: any,
+    error?: string
+  ): ChatMessage => {
     const newMessage: ChatMessage = {
       id: id || `${sender}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       sender,
       text: sender === MessageSender.AI ? cleanAiText(text) : text,
       timestamp: new Date(),
       sources,
+      rawResponse,
+      error,
     };
     setCurrentUiMessages((prev: ChatMessage[]) => [...prev, newMessage]);
     if (sender === MessageSender.SYSTEM) {
@@ -232,6 +228,45 @@ const App: React.FC = () => {
 
   }, [uploadedDocuments, selectedBookIds, internalBooksData]);
 
+  const saveExtractedText = async (fileName: string, text: string) => {
+    try {
+      if (!fileName || !text || !text.trim()) {
+        addMessageToUi(MessageSender.SYSTEM, 'Nenhum texto pôde ser extraído do arquivo. O PDF pode estar vazio, protegido ou conter apenas imagens.');
+        return;
+      }
+      const res = await fetch('/api/save-extracted-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName, text })
+      });
+      if (!res.ok) {
+        if (res.status === 422) {
+          addMessageToUi(MessageSender.SYSTEM, 'Nenhum texto pôde ser extraído do arquivo. O PDF pode estar vazio, protegido ou conter apenas imagens.');
+        } else {
+          addMessageToUi(MessageSender.SYSTEM, 'Erro ao salvar texto extraído para RAG.');
+        }
+      }
+    } catch (err) {
+      addMessageToUi(MessageSender.SYSTEM, 'Erro ao salvar texto extraído para RAG.');
+      console.error('Erro ao salvar texto extraído para RAG:', err);
+    }
+  };
+
+  const reloadRagSources = async () => {
+    try {
+      const res = await fetch('/api/rag-sources');
+      const data = await res.json();
+      setInternalSources(Array.isArray(data.files) ? [...data.files] : []);
+      if (!Array.isArray(data.files)) {
+        alert('Erro ao carregar fontes RAG: resposta inesperada do backend.');
+        console.error('Resposta inesperada de /api/rag-sources:', data);
+      }
+    } catch (err) {
+      setInternalSources([]);
+      alert('Erro ao carregar fontes RAG. Veja o console para detalhes.');
+      console.error('Erro ao buscar /api/rag-sources:', err);
+    }
+  };
 
   const callBackendAnalysisAPI = useCallback(async (
     endpoint: 'summary' | 'insights' | 'swot',
@@ -239,7 +274,7 @@ const App: React.FC = () => {
     summaryText?: string,
     insightsText?: string
   ): Promise<string | SwotAnalysis> => { // Updated return type
-    const url = `http://localhost:3001/api/analyze/${endpoint}`;
+    const url = `/api/analyze/${endpoint}`;
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -271,119 +306,10 @@ const App: React.FC = () => {
     }
   }, []);
 
-
-  const handleFilesSelect = (files: File[]) => {
-    const newDocuments: UploadedDocument[] = files.map((file: File) => ({
-      id: `${file.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`, name: file.name, text: '', file,
-      processingAnalysis: false, analysisError: null,
-    }));
-    setUploadedDocuments((prev: UploadedDocument[]) => [...prev, ...newDocuments].slice(0, MAX_FILES));
-    addMessageToUi(MessageSender.SYSTEM, `${newDocuments.length} arquivo(s) selecionado(s). Clique em "Extrair Texto" para processar e habilitar o chat RAG.`);
-  };
-
-
-  const extractTextFromFile = async (file: File): Promise<string> => {
-    const fileType = file.type;
-    const reader = new FileReader();
-
-    return new Promise<string>((resolve, reject) => {
-        reader.onload = async (event) => {
-            try {
-                if (!event.target?.result) {
-                    reject(new Error('Falha ao ler o arquivo.'));
-                    return;
-                }
-                if (fileType === 'application/pdf') {
-                    if (typeof window.pdfjsLib === 'undefined' || !window.pdfjsLib.getDocument) {
-                        reject(new Error("pdf.js não carregado. Por favor, verifique sua conexão ou a inclusão da biblioteca."));
-                        return;
-                    }
-                    const pdf = await window.pdfjsLib.getDocument({ data: event.target.result as ArrayBuffer }).promise;
-                    let fullText = '';
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        const page = await pdf.getPage(i);
-                        const textContent = await page.getTextContent();
-                        fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n';
-                    }
-                    resolve(fullText.trim());
-                } else if (fileType === 'application/json' || fileType === 'text/plain' || file.name.endsWith('.jsonl')) {
-                    resolve(event.target.result as string);
-                } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
-                    reject(new Error('A extração de texto de arquivos .docx não é suportada diretamente. Por favor, converta para PDF ou TXT.'));
-                } else {
-                    reject(new Error('Tipo de arquivo não suportado para extração de texto. Suportados: PDF, DOCX, JSON, JSONL, TXT.'));
-                }
-            } catch (e) {
-                reject(e);
-            }
-        };
-        reader.onerror = () => reject(new Error('Erro ao ler o arquivo.'));
-
-        if (fileType === 'application/pdf') {
-            reader.readAsArrayBuffer(file);
-        } else if (fileType === 'application/json' || fileType === 'text/plain' || file.name.endsWith('.jsonl')) {
-            reader.readAsText(file);
-        } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
-            // For .docx, we don't read the file here as we'll reject immediately in onload.
-            // Alternatively, could read as array buffer if a future client-side parser is added.
-            // For now, this path leads to rejection in onload.
-             reader.readAsArrayBuffer(file); // Read to trigger onload, which will then reject.
-        } else {
-             reject(new Error('Tipo de arquivo não suportado. Use PDF, DOCX, JSON, JSONL ou TXT.'));
-        }
-    });
-  };
-
-  const processFiles = useCallback(async () => {
-    const docsToProcess = uploadedDocuments.filter(d => !d.text && !d.processingAnalysis);
-    if (docsToProcess.length === 0) {
-      addMessageToUi(MessageSender.SYSTEM, "Nenhum novo arquivo para extrair texto.");
-      return;
-    }
-
-    setIsProcessingFiles(true);
-    addMessageToUi(MessageSender.SYSTEM, `Extraindo texto de ${docsToProcess.length} arquivo(s)...`);
-
-    const processedDocs = await Promise.all(
-        uploadedDocuments.map(async doc => {
-            if (doc.text || doc.processingAnalysis) return doc; // Skip already processed or currently processing
-
-            setUploadedDocuments(prev => prev.map(d => d.id === doc.id ? {...d, processingAnalysis: true, analysisError: null} : d));
-            try {
-                const fileContent = await extractTextFromFile(doc.file);
-                addMessageToUi(MessageSender.SYSTEM, `Texto extraído de "${doc.name}".`);
-                return { ...doc, text: fileContent, processingAnalysis: false, analysisError: fileContent ? null : 'Nenhum conteúdo extraído.' };
-            } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido.';
-                addMessageToUi(MessageSender.SYSTEM, `Erro ao processar ${doc.name}: ${errorMsg}`);
-                return { ...doc, text: '', processingAnalysis: false, analysisError: errorMsg };
-            }
-        })
-    );
-
-    setUploadedDocuments(processedDocs);
-    setIsProcessingFiles(false);
-
-    const successfullyProcessedCount = processedDocs.filter(doc => doc.text && !doc.analysisError).length;
-    const erroredDocsCount = processedDocs.filter(doc => doc.analysisError).length;
-
-    if (successfullyProcessedCount > 0) {
-      addMessageToUi(MessageSender.SYSTEM, `Extração de texto concluída. ${successfullyProcessedCount} documento(s) pronto(s) para análise ou chat com RAG.`);
-    }
-    if (erroredDocsCount > 0) {
-        addMessageToUi(MessageSender.SYSTEM, `${erroredDocsCount} arquivo(s) não puderam ser processados completamente (verifique mensagens de erro individuais).`);
-    }
-    if (successfullyProcessedCount === 0 && erroredDocsCount === 0 && docsToProcess.length > 0){
-         addMessageToUi(MessageSender.SYSTEM, "Nenhum texto pôde ser extraído dos novos arquivos ou os arquivos estavam vazios.");
-    }
-
-
-  }, [uploadedDocuments, addMessageToUi]);
-
-
-  const handleAnalyzeDocument = useCallback(async (documentId: string) => {
+  const handleAnalyzeDocument = async (documentId: string) => {
+    console.time(`handleAnalyzeDocument-${documentId}`);
     const docToUpdate = uploadedDocuments.find(d => d.id === documentId);
-    if (!docToUpdate) return; 
+    if (!docToUpdate) return;
 
     setUploadedDocuments(prevDocs =>
       prevDocs.map(d => d.id === documentId ? { ...d, processingAnalysis: true, analysisError: null } : d)
@@ -398,6 +324,7 @@ const App: React.FC = () => {
         prevDocs.map(d => d.id === documentId ? { ...d, processingAnalysis: false, analysisError: currentDocToAnalyze.analysisError || errorMsg } : d)
       );
       addMessageToUi(MessageSender.SYSTEM, errorMsg);
+      console.timeEnd(`handleAnalyzeDocument-${documentId}`);
       return;
     }
 
@@ -467,8 +394,104 @@ const App: React.FC = () => {
         prevDocs.map(d => d.id === documentId ? { ...d, processingAnalysis: false, analysisError: errorMsg } : d)
       );
       addMessageToUi(MessageSender.SYSTEM, errorMsg);
+    } finally {
+      console.timeEnd(`handleAnalyzeDocument-${documentId}`);
     }
-  }, [uploadedDocuments, addMessageToUi, callBackendAnalysisAPI]);
+  };
+
+  const processFiles = useCallback(async () => {
+    console.time('processFiles');
+    const docsToProcess = uploadedDocuments.filter(d => !d.text && !d.processingAnalysis);
+    if (docsToProcess.length === 0) {
+      addMessageToUi(MessageSender.SYSTEM, "Nenhum novo arquivo para extrair texto.");
+      console.timeEnd('processFiles');
+      return;
+    }
+
+    setIsProcessingFiles(true);
+    addMessageToUi(MessageSender.SYSTEM, `Extraindo texto de ${docsToProcess.length} arquivo(s)...`);
+
+    const processedDocs = await Promise.all(
+      uploadedDocuments.map(async doc => {
+        if (doc.text || doc.processingAnalysis) return doc; // Skip already processed or currently processing
+        // Set processingAnalysis to true for the current document being processed
+        try {
+          // Enviar arquivo para o backend
+          const formData = new FormData();
+          formData.append('file', doc.file);
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Erro ao extrair texto do backend.');
+          }
+          const data = await response.json();
+          addMessageToUi(MessageSender.SYSTEM, `Texto extraído de "${doc.name}".`);
+          // Salvar texto extraído para RAG
+          await saveExtractedText(doc.name.endsWith('.txt') ? doc.name : doc.name + '.txt', data.text);
+          await new Promise(r => setTimeout(r, 500));
+          await reloadRagSources();
+          // Return the updated document object
+          return { ...doc, text: data.text, processingAnalysis: false, analysisError: data.text ? null : 'Nenhum conteúdo extraído.' };
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido.';
+          addMessageToUi(MessageSender.SYSTEM, `Erro ao processar ${doc.name}: ${errorMsg}`);
+          return { ...doc, text: '', processingAnalysis: false, analysisError: errorMsg };
+        }
+      })
+    );
+
+    // Update the state once after all documents have been processed
+    setUploadedDocuments(processedDocs);
+    setIsProcessingFiles(false);
+
+    const successfullyProcessedCount = processedDocs.filter(doc => doc.text && !doc.analysisError).length;
+    const erroredDocsCount = processedDocs.filter(doc => doc.analysisError).length;
+
+    if (successfullyProcessedCount > 0) {
+      addMessageToUi(MessageSender.SYSTEM, `Extração de texto concluída. ${successfullyProcessedCount} documento(s) pronto(s) para análise ou chat com RAG.`);
+      // Iniciar análise automaticamente para documentos processados com sucesso
+      processedDocs.filter(doc => doc.text && !doc.analysisError).forEach(doc => {
+        handleAnalyzeDocument(doc.id);
+      });
+    }
+    if (erroredDocsCount > 0) {
+      addMessageToUi(MessageSender.SYSTEM, `${erroredDocsCount} arquivo(s) não puderam ser processados completamente (verifique mensagens de erro individuais).`);
+    }
+    if (successfullyProcessedCount === 0 && erroredDocsCount === 0 && docsToProcess.length > 0){
+      addMessageToUi(MessageSender.SYSTEM, "Nenhum texto pôde ser extraído dos novos arquivos ou os arquivos estavam vazios.");
+    }
+    console.timeEnd('processFiles');
+  }, [uploadedDocuments, addMessageToUi, handleAnalyzeDocument, reloadRagSources, saveExtractedText]);
+
+  const handleFilesSelect = (files: File[]) => {
+    if (!files || files.length === 0) return;
+    const newDocuments = files.map(file => ({
+      id: `${file.name}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: file.name,
+      text: '',
+      file,
+      processingAnalysis: false,
+      analysisError: null,
+    }));
+    setUploadedDocuments((prev: UploadedDocument[]) => {
+      const updatedDocs = [...prev, ...newDocuments].slice(0, MAX_FILES);
+      // Chamar processFiles diretamente aqui, após a atualização do estado
+      // Isso garante que processFiles seja chamada apenas quando novos arquivos são selecionados
+      // e evita o loop de re-renderização do useEffect
+      if (newDocuments.length > 0) {
+        // Usar setTimeout para garantir que o estado seja atualizado antes de processFiles
+        // ou passar os newDocuments diretamente para processFiles se a lógica permitir
+        // Por simplicidade, vamos chamar processFiles diretamente e ela vai operar sobre o estado atualizado
+        // (que será o 'updatedDocs' no próximo render)
+        processFiles();
+      }
+      return updatedDocs;
+    });
+    // addMessageToUi removida: não exibe mais mensagem de instrução
+  };
 
   /**
    * Handles sending a message to the backend to get a response from the AI.
@@ -477,6 +500,7 @@ const App: React.FC = () => {
    * @returns {Promise<void>}
    */
   const handleSendMessage = useCallback(async (userInput: string) => {
+    console.log("Enviando mensagem:", userInput, "isLoadingChat:", isLoadingChat);
     if (isLoadingChat || !userInput.trim()) return;
     cancelSpeech();
 
@@ -486,7 +510,7 @@ const App: React.FC = () => {
     const aiUiMsgPlaceholder = addMessageToUi(MessageSender.AI, "Digitando...", `ai-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
     try {
-      const response = await fetch('http://localhost:3001/api/chat', {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -497,27 +521,49 @@ const App: React.FC = () => {
         }),
       });
 
+      let data: any = null;
+      let aiReply = '';
+      let finalTextToDisplay = '';
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Backend error: ${response.status}`);
+        try {
+          data = await response.json();
+        } catch (e) {
+          data = null;
+        }
+        throw new Error((data && data.error) || `Backend error: ${response.status}`);
       }
-
-      const data = await response.json();
-      const aiReply = data.reply;
-
-      const finalTextToDisplay = cleanAiText(aiReply) || "Não obtive uma resposta válida do backend.";
+      data = await response.json();
+      aiReply = data.text; // Alterado de data.reply para data.text
+      finalTextToDisplay = cleanAiText(aiReply) || "Não obtive uma resposta válida do backend.";
 
       setCurrentUiMessages(prev => prev.map(msg =>
-        msg.id === aiUiMsgPlaceholder.id ? { ...msg, text: finalTextToDisplay, sources: undefined, sender: MessageSender.AI } : msg
+        msg.id === aiUiMsgPlaceholder.id
+          ? {
+              ...msg,
+              text: finalTextToDisplay,
+              sources: undefined,
+              sender: MessageSender.AI,
+              rawResponse: data,
+              error: undefined
+            }
+          : msg
       ));
 
       if(finalTextToDisplay !== "Não obtive uma resposta válida do backend.") speak(finalTextToDisplay);
 
     } catch (error) {
       let errorText = `Desculpe, ocorreu um erro ao comunicar com o backend: ${error instanceof Error ? error.message : String(error)}`;
-
       setCurrentUiMessages(prev => prev.map(msg =>
-        msg.id === aiUiMsgPlaceholder.id ? { ...msg, text: errorText, sources: undefined, sender: MessageSender.AI } : msg
+        msg.id === aiUiMsgPlaceholder.id
+          ? {
+              ...msg,
+              text: errorText,
+              sources: undefined,
+              sender: MessageSender.AI,
+              error: errorText,
+              rawResponse: undefined
+            }
+          : msg
       ));
     } finally {
       setIsLoadingChat(false);
@@ -536,110 +582,6 @@ const App: React.FC = () => {
       }
     }
   }, [isSpeaking, cancelSpeech, currentUiMessages, speak, addMessageToUi]);
-
-  const handleFileForComparisonB = useCallback(async (file: File | null) => {
-    setComparisonError(null);
-    setDocBError(null);
-    if (!file) {
-      setDocumentForComparisonB(null);
-      return;
-    }
-    setDocBProcessing(true);
-    try {
-      const text = await extractTextFromFile(file);
-      setDocumentForComparisonB({
-        id: `compare-doc-b-${Date.now()}`, name: file.name, text, file,
-        processingAnalysis: false, analysisError: null
-      });
-      addMessageToUi(MessageSender.SYSTEM, `Documento "${file.name}" carregado para comparação.`);
-    } catch (error) {
-      const errorMsg = `Erro ao processar Documento B: ${error instanceof Error ? error.message : 'Desconhecido'}`;
-      addMessageToUi(MessageSender.SYSTEM, errorMsg);
-      setDocBError(errorMsg);
-      setDocumentForComparisonB(null);
-    } finally {
-        setDocBProcessing(false);
-    }
-  }, [addMessageToUi]);
-
-  const handleStartComparison = useCallback(async () => {
-    if (!documentForComparisonA_Text || !documentForComparisonB?.text) {
-      let errorMsg = "Ambos os documentos (A e B) devem ser selecionados e processados para comparação.";
-      if (documentForComparisonB && documentForComparisonB.analysisError) { // If Doc B had an extraction error
-        errorMsg = `Documento B ("${documentForComparisonB.name}") não pôde ser processado: ${documentForComparisonB.analysisError}. Não é possível comparar.`;
-      } else if (!documentForComparisonA_Text) {
-        errorMsg = "Documento A não foi selecionado ou não possui texto.";
-      } else if (!documentForComparisonB?.text) {
-        errorMsg = "Documento B não foi carregado ou não possui texto.";
-      }
-      setComparisonError(errorMsg);
-      addMessageToUi(MessageSender.SYSTEM, `Erro na comparação: ${errorMsg}`);
-      setShowComparisonModal(true); // Show modal to display this error
-      return;
-    }
-    setIsComparing(true);
-    setComparisonResult('');
-    setComparisonError(null);
-    setShowComparisonModal(true);
-
-    let docAName = "Documento A";
-    if (documentForComparisonA_Source === 'lastAiResponse') {
-        docAName = "Última Resposta da IA";
-    } else if (documentForComparisonA_Id) {
-        const docA = uploadedDocuments.find(d => d.id === documentForComparisonA_Id);
-        if (docA) docAName = docA.name;
-    }
-    const docBName = documentForComparisonB.name;
-
-
-    addMessageToUi(MessageSender.SYSTEM, `Iniciando comparação entre "${docAName}" e "${docBName}"...`);
-
-    try {
-      // Call the backend comparison endpoint
-      const response = await fetch('http://localhost:3001/api/compare', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          documentAText: documentForComparisonA_Text,
-          documentBText: documentForComparisonB.text,
-          docAName: docAName,
-          docBName: docBName,
-          agentId: currentAgentId, // Send the current agent ID
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Backend comparison error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const comparisonText = data.comparison;
-
-      const finalComparisonResult = comparisonText || "Não foi possível obter o resultado da comparação do backend.";
-
-      setComparisonResult(finalComparisonResult);
-      addMessageToUi(MessageSender.SYSTEM, `Comparação entre "${docAName}" e "${docBName}" concluída.`);
-
-    } catch (error: any) {
-      const errorMsg = `Erro na comparação: ${error.message || String(error)}`;
-      console.error("Comparison error:", error);
-      setComparisonError(errorMsg);
-      addMessageToUi(MessageSender.SYSTEM, errorMsg);
-    } finally {
-      setIsComparing(false);
-    }
-  }, [
-    documentForComparisonA_Text, 
-    documentForComparisonA_Source, 
-    documentForComparisonA_Id, 
-    documentForComparisonB, 
-    uploadedDocuments, 
-    addMessageToUi,
-    currentAgentId,
-  ]);
 
   const handleAgentChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setCurrentAgentId(event.target.value);
@@ -713,9 +655,7 @@ const App: React.FC = () => {
   }, [addMessageToUi]);
 
 
-  const chatReady = !!uploadedDocuments.some(d => !!d.text && !d.analysisError) || selectedBookIds.size > 0;
-  const ragContextAvailable = uploadedDocuments.some(d => !!d.text && !d.analysisError) || selectedBookIds.size > 0;
-  const chatTitle = useMemo(() => selectedAgent ? selectedAgent.name : "Assistente jurídico avançado com múltiplos especialistas em Direito Brasileiro.", [selectedAgent]);
+  const chatTitle = useMemo(() => PREDEFINED_BOOKS.find(b => b.id === currentAgentId)?.name || "Assistente jurídico avançado com múltiplos especialistas em Direito Brasileiro.", [currentAgentId]);
 
   const aiMessages = useMemo(() => {
     return currentUiMessages.filter(msg => msg.sender === MessageSender.AI);
@@ -739,6 +679,118 @@ const App: React.FC = () => {
     addMessageToUi(MessageSender.SYSTEM, "Histórico de respostas da IA baixado como JSON.");
   }, [aiMessages, addMessageToUi]);
 
+  // Substituir a função de remoção de fonte interna para usar o endpoint padronizado
+  const handleRemoveInternalSource = async (filePath: string) => {
+    // Extrai apenas o nome do arquivo
+    const filename = filePath.split('/').pop();
+    if (!filename) return;
+    try {
+      const res = await fetch(`http://localhost:3001/api/documents/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      if (res.status === 404) {
+        alert('Arquivo não encontrado. Ele já pode ter sido removido.');
+      } else if (!res.ok) {
+        const data = await res.json();
+        alert('Erro ao remover arquivo: ' + (data.error || res.statusText));
+      } else {
+        alert('Arquivo removido com sucesso!');
+        // Atualize a lista de documentos, removendo o arquivo deletado
+        await reloadRagSources();
+      }
+    } catch (err) {
+      alert('Erro ao remover arquivo: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  // 1. Adicionar estados para busca RAG:
+  const [ragQuery, setRagQuery] = useState('');
+  const [ragResults, setRagResults] = useState<any[]>([]);
+  const [ragLoading, setRagLoading] = useState(false);
+  const [ragError, setRagError] = useState<string | null>(null);
+
+  // 2. Função handleRagSearch:
+  const handleRagSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ragQuery.trim()) return;
+    setRagLoading(true);
+    setRagError(null);
+    setRagResults([]);
+    try {
+      const res = await fetch('/api/rag-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: ragQuery })
+      });
+      console.log(`[DEBUG frontend] Resposta RAG - Status: ${res.status}, StatusText: ${res.statusText}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({})); // Tenta ler JSON de erro, se houver
+        console.error(`[ERRO frontend] Resposta RAG não OK. Erro do backend:`, errorData);
+        throw new Error(errorData.error || `Erro na busca RAG (HTTP ${res.status})`);
+      }
+      const data = await res.json();
+      console.log(`[DEBUG frontend] Dados recebidos da busca RAG:`, data);
+      setRagResults(data.results || []);
+    } catch (err: any) {
+      console.error(`[ERRO frontend] Falha na busca RAG:`, err);
+      setRagError(err.message || 'Erro desconhecido');
+    } finally {
+      setRagLoading(false);
+    }
+  };
+
+  // 1. Adicionar estado para feedback de reindexação:
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexStatus, setReindexStatus] = useState<string | null>(null);
+
+  // 2. Função para chamar o endpoint de reindexação:
+  const handleForceReindex = async () => {
+    setReindexing(true);
+    setReindexStatus(null);
+    try {
+      const res = await fetch('/api/rag-reindex', { method: 'POST' });
+      if (!res.ok) throw new Error('Erro ao reindexar');
+      setReindexStatus('Reindexação iniciada com sucesso! Aguarde alguns minutos para a atualização dos resultados.');
+    } catch (err: any) {
+      setReindexStatus('Erro ao iniciar reindexação: ' + (err.message || 'Erro desconhecido'));
+    } finally {
+      setReindexing(false);
+    }
+  };
+
+  // Separar arquivos RAG carregados pelo usuário (uploads) dos demais
+  const userRagSources = internalSources.filter(f => f && f.toLowerCase().includes('processos/extraidos'));
+  const otherRagSources = internalSources.filter(f => !f.toLowerCase().includes('processos/extraidos'));
+
+  // Modelos e provedores LLM
+  const LLM_PROVIDERS = [
+    { value: 'lmstudio', label: 'LM Studio' },
+    { value: 'gemini', label: 'Gemini 2.5 Pro (Google)' },
+  ];
+  const LLM_LMSTUDIO_MODELS = [
+    'unsloth/gemma-3-4b-it-GGUF/gemma-3-4b-it-Q4_K_S.gguf',
+    'lmstudio-community/gemma-3-4b-it-GGUF/gemma-3-4b-it-Q4_K_M.gguf',
+    'hugging-quants/Llama-3.2-1B-Instruct-Q8_0-GGUF/llama-3.2-1b-instruct-q8_0.gguf',
+    'lmstudio-community/Qwen2.5-0.5B-Instruct-GGUF/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf',
+    'lmstudio-community/granite-vision-3.2-2b-GGUF/granite-vision-3.2-2b-Q4_K_M.gguf',
+  ];
+
+  const [llmProvider, setLlmProvider] = useState<string>('lmstudio');
+  const [lmstudioModel, setLmstudioModel] = useState<string>('granite-vision-3.2-2b');
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
+
+  // Sincronizar com backend ao alterar
+  useEffect(() => {
+    fetch('/api/llm-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: llmProvider, lmstudioModel, geminiApiKey }),
+    });
+  }, [llmProvider, lmstudioModel, geminiApiKey]);
+
+  // Renomear para corresponder às props esperadas pelo LLMConfigSelector
+  const provider = llmProvider;
+  const onProviderChange = setLlmProvider;
+  const onLmstudioModelChange = setLmstudioModel;
+  const onGeminiApiKeyChange = setGeminiApiKey;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[384px_1fr_320px] h-screen antialiased text-gray-200">
@@ -767,6 +819,7 @@ const App: React.FC = () => {
             value={currentAgentId}
             onChange={handleAgentChange}
             className="w-full p-2 bg-gray-700 border border-gray-600 rounded-md text-gray-200 focus:ring-sky-500 focus:border-sky-500 text-sm"
+            title="Selecione o especialista ou agente"
           >
             {LEGAL_AGENTS.map(agent => (
               <option key={agent.id} value={agent.id}>{agent.name}</option>
@@ -805,25 +858,17 @@ const App: React.FC = () => {
         </div>
 
 
-        <FileUploadArea 
-          onFilesSelect={handleFilesSelect} 
-          onProcessFiles={processFiles}
+        <FileUploadArea
+          onFilesSelect={handleFilesSelect}
           isProcessing={isProcessingFiles}
-          maxFiles={MAX_FILES}
-          currentFileCount={uploadedDocuments.length}
+          maxFiles={5}
+          currentFileCount={0}
         />
-
-        <button
-          onClick={processFiles}
-          disabled={isProcessingFiles || uploadedDocuments.every(d => d.text || d.processingAnalysis || d.analysisError)}
-          className="w-full px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isProcessingFiles ? <LoadingSpinner size="sm" color="text-white"/> : 'Extrair Texto dos Documentos'}
-        </button>
 
         <DocumentList 
           documents={uploadedDocuments} 
           onAnalyzeDocument={handleAnalyzeDocument}
+          onSendToChat={setChatInput}
         />
         
         <InternalBookSelector
@@ -834,19 +879,160 @@ const App: React.FC = () => {
           onRetryBookLoadWithFile={handleRetryBookLoadWithFile}
         />
         
-        <ComparisonSidebar
-            uploadedDocuments={uploadedDocuments.filter(d => !!d.text && !d.analysisError)} 
-            lastAiResponse={[...currentUiMessages].reverse().find(m => m.sender === MessageSender.AI)?.text || ""}
-            onFileForComparisonB={handleFileForComparisonB}
-            onStartComparison={handleStartComparison}
-            isComparing={isComparing}
-            comparisonError={comparisonError}
-            setDocumentForComparisonA_Id={setDocumentForComparisonA_Id}
-            setDocumentForComparisonA_Source={setDocumentForComparisonA_Source}
-            setDocumentForComparisonA_Text={setDocumentForComparisonA_Text}
-            docBFileProcessing={docBProcessing}
-            docBFileError={docBError}
+        <div className="mt-4">
+          <h4 className="text-sky-400 font-semibold mb-2 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3" /></svg>
+            Fontes de Conhecimento Interno RAG
+          </h4>
+          {userRagSources.length > 0 && (
+            <div className="mb-2">
+              <h4 className="text-xs font-bold text-sky-400 uppercase mb-1">Fontes carregadas pelo usuário (uploads)</h4>
+              <ul className="text-xs text-gray-200 space-y-1">
+                {userRagSources.map(f => (
+                  <li key={f}>{f.replace('public/books/PROCESSOS/extraidos/', '')}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <ul className="space-y-2">
+            {otherRagSources.map(fileName => (
+              <li key={fileName} className="bg-gray-700 rounded p-2 text-xs text-gray-200 truncate flex items-center justify-between">
+                <span>{fileName}</span>
+                <button
+                  className="ml-2 text-red-400 hover:text-red-600"
+                  title="Remover fonte"
+                  onClick={() => handleRemoveInternalSource(fileName)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        
+        <form onSubmit={handleRagSearch} className="flex items-center gap-2 p-2 bg-gray-900 border-b border-gray-700 mt-2 rounded">
+          <input
+            type="text"
+            value={ragQuery}
+            onChange={e => setRagQuery(e.target.value)}
+            placeholder="Busca semântica RAG (ex: jurisprudência, artigo, tese...)"
+            className="flex-1 p-2 rounded bg-gray-800 text-white border border-gray-700"
+          />
+          <button type="submit" className="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded" disabled={ragLoading}>
+            {ragLoading ? 'Buscando...' : 'Buscar RAG'}
+          </button>
+        </form>
+        {ragError && <div className="p-4 text-red-400">{ragError}</div>}
+        {ragResults.length > 0 && (
+          <div className="p-4 bg-gray-800 border-b border-gray-700 mt-2 rounded">
+            <h4 className="text-sky-400 font-semibold mb-2 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V4a2 2 0 10-4 0v1.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+              Resultados RAG:
+            </h4>
+            <ul className="space-y-4">
+              {ragResults
+                .slice()
+                .sort((a, b) => (b.score || 0) - (a.score || 0))
+                .map((res, idx) => {
+                  const fileName = res.metadata?.fileName || res.metadata?.source || 'Desconhecida';
+                  const friendlyNameMap: Record<string, string> = {
+                    'constituicao_federal_1988.txt': 'Constituição Federal de 1988',
+                    'CLT_normas_correlatas_7ed.txt': 'Consolidação das Leis do Trabalho',
+                    'CP_normas_correlatas_8ed.txt': 'Código Penal',
+                    'CPP_normas_correlatas_7ed.txt': 'Código de Processo Penal',
+                    'cdc-portugues-2013.txt': 'Código de Defesa do Consumidor',
+                  };
+                  const friendlyName = friendlyNameMap[fileName] || fileName.replace(/_/g, ' ').replace(/\.txt|\.pdf/gi, '').replace(/\b([a-z])/g, (l: string) => l.toUpperCase());
+                  const score = res.score || 0;
+                  let badgeColor = 'bg-gray-500';
+                  if (score > 0.8) badgeColor = 'bg-green-600';
+                  else if (score > 0.6) badgeColor = 'bg-yellow-500';
+                  const copyToClipboard = (text: string) => {
+                    navigator.clipboard.writeText(text);
+                  };
+                  return (
+                    <li key={idx} className="bg-gray-700 rounded-lg p-4 shadow-md border border-gray-600">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-sky-300 flex items-center gap-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6a2 2 0 012-2h2a2 2 0 012 2v6m-6 0h6" /></svg>
+                          {friendlyName}
+                        </span>
+                        <span className="text-xs flex items-center gap-1">
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-white ${badgeColor}`}>{Math.round(score * 100)}%</span>
+                          Relevância
+                        </span>
+                      </div>
+                        <div
+                        className={`score-bar ${badgeColor}`}
+                        data-score={score}
+                        ></div>
+                      <details>
+                        <summary className="cursor-pointer text-sky-400 hover:underline flex items-center gap-1">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m6 0a6 6 0 11-12 0 6 6 0 0112 0z" /></svg>
+                          Mostrar trecho do documento
+                        </summary>
+                        <pre className="whitespace-pre-wrap text-gray-100 text-xs mt-2 bg-gray-800 p-2 rounded max-h-64 overflow-y-auto border border-gray-700">
+                          {res.text}
+                        </pre>
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            className="text-xs text-sky-400 hover:underline flex items-center gap-1"
+                            onClick={() => copyToClipboard(res.text)}
+                            title="Copiar trecho para a área de transferência"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 12h8m-6 8h6a2 2 0 002-2V8a2 2 0 00-2-2h-6a2 2 0 00-2 2v12z" /></svg>
+                            Copiar trecho
+                          </button>
+                          <button
+                            className="text-xs text-green-400 hover:underline flex items-center gap-1"
+                            onClick={() => setChatInput(res.text)}
+                            title="Usar este trecho no chat"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V10a2 2 0 012-2h2" /></svg>
+                            Usar no Chat
+                          </button>
+                        </div>
+                      </details>
+                    </li>
+                  );
+                })}
+            </ul>
+          </div>
+        )}
+
+        <button onClick={handleForceReindex} disabled={reindexing} className="w-full px-4 py-2 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold rounded-md mt-2 disabled:opacity-50">
+          {reindexing ? 'Reindexando...' : 'Forçar Reindexação RAG'}
+        </button>
+        {reindexStatus && <div className="text-xs text-sky-300 mt-1">{reindexStatus}</div>}
+
+        <LLMConfigSelector
+          provider={provider}
+          onProviderChange={onProviderChange}
+          lmstudioModel={lmstudioModel}
+          onLmstudioModelChange={onLmstudioModelChange}
+          geminiApiKey={geminiApiKey}
+          onGeminiApiKeyChange={onGeminiApiKeyChange}
+          availableProviders={LLM_PROVIDERS}
+          availableLmstudioModels={LLM_LMSTUDIO_MODELS}
         />
+
+        {/* Autor e Contato */}
+        <div className="flex flex-col items-center mt-6 mb-2 p-3 bg-gray-900 rounded-lg border border-gray-700">
+          <img
+            src="https://github.com/MarceloClaro/logos/blob/main/EU1.jpg?raw=true"
+            alt="Autor Marcelo Claro"
+            className="w-24 h-24 rounded-full object-cover border-2 border-sky-500 shadow mb-2 autor-img-bg"
+          />
+          <div className="text-xs text-gray-300 text-center mt-1">
+            <div className="font-semibold text-sky-400">Prof. Marcelo Claro</div>
+            <div className="mt-1">
+              <span className="font-semibold">WhatsApp:</span> <a href="https://wa.me/5588981587145" target="_blank" rel="noopener noreferrer" className="text-green-400 hover:underline">(88) 98158-7145</a>
+            </div>
+            <div className="mt-1">
+              <span className="font-semibold">E-mail:</span> <a href="mailto:marceloclaro@gmail.com" className="text-sky-400 hover:underline">marceloclaro@gmail.com</a>
+            </div>
+          </div>
+        </div>
       </aside>
 
       {/* Middle Panel (Chat) */}
@@ -865,9 +1051,10 @@ const App: React.FC = () => {
           isLoading={isLoadingChat}
           isSpeaking={isSpeaking}
           onToggleSpeak={handleToggleSpeak}
-          chatReady={chatReady}
-          ragContextAvailable={ragContextAvailable}
           chatTitle={chatTitle}
+          chatInput={chatInput}
+          setChatInput={setChatInput}
+          setMessages={setCurrentUiMessages}
         />
       </main>
 
@@ -881,16 +1068,13 @@ const App: React.FC = () => {
       </aside>
       
       <ComparisonResultModal
-        isOpen={showComparisonModal}
-        onClose={() => setShowComparisonModal(false)}
-        result={comparisonResult}
-        error={comparisonError}
-        isLoading={isComparing}
-        docAName={
-            documentForComparisonA_Source === 'lastAiResponse' ? "Última Resposta da IA" : 
-            uploadedDocuments.find(d => d.id === documentForComparisonA_Id)?.name
-        }
-        docBName={documentForComparisonB?.name}
+        isOpen={false}
+        onClose={() => {}}
+        result={''}
+        error={null}
+        isLoading={false}
+        docAName={''}
+        docBName={''}
       />
     </div>
   );

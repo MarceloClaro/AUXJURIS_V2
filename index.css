@@ -1,0 +1,155 @@
+/*
+  Atenção: scrollbar-width e scrollbar-color só funcionam no Firefox e Chrome 121+.
+  Para Chrome/Safari/Edge/Opera, use também os seletores ::-webkit-scrollbar abaixo.
+  Não há impacto negativo: navegadores que não suportam apenas ignoram essas propriedades.
+*/
+.custom-scrollbar {
+  scrollbar-width: thin; /* Firefox, Chrome 121+ */
+  scrollbar-color: #38bdf8 #1e293b; /* Firefox, Chrome 121+ */
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  background: #1e293b;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #38bdf8;
+  border-radius: 4px;
+}
+
+/* Navegadores sem suporte mostrarão a barra padrão */
+
+.rag-progress-bar {
+  height: 0.5rem;
+  border-radius: 0.25rem;
+  background-color: #0ea5e9; /* sky-500 */
+  transition: width 0.3s;
+}
+
+/* Fallback para custom scrollbars em navegadores baseados em Webkit (Chrome, Edge, Safari) */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #1e293b;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  background: #1e293b;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+.custom-inline-style {
+  /* Adicione aqui as propriedades que estavam no style inline */
+}
+
+.score-bar {
+  height: 100%;
+  background-color: #0891b2; /* Azul semelhante ao Tailwind sky-500 */
+  border-radius: 0.25rem;
+  transition: width 0.3s;
+  width: var(--bar-width, 100%);
+}
+
+/* Para aplicar largura dinâmica via JS, use style ou inline style mínima, pois CSS puro não lê data-score como width. */
+
+/* Estilo para botões de ação do chat (menus dinâmicos, checklist, etc) */
+.action-buttons-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.action-button {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: #0369a1;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.action-button:hover {
+  background: #0ea5e9;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(3,105,161,0.12);
+}
+.action-button:active {
+  background: #075985;
+}
+
+/* Botão de destaque para sugestões do RAG */
+.action-button.rag-suggestion {
+  background: #15803d;
+}
+.action-button.rag-suggestion:hover {
+  background: #22c55e;
+}
+
+/* Responsividade */
+@media (max-width: 600px) {
+  .action-buttons-container {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .action-button {
+    width: 100%;
+    font-size: 1rem;
+  }
+}
+
+/* Scrollbar cross-browser styling */
+.custom-scrollbar {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #38bdf8 #1e293b; /* Firefox */
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  background: #1e293b;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #38bdf8;
+  border-radius: 4px;
+} 
+
+/* Barra de relevância RAG dinâmica por data-score */
+.score-bar[data-score] { min-width: 5%; }
+.score-bar[data-score="0"] { width: 5%; }
+.score-bar[data-score="0.1"] { width: 10%; }
+.score-bar[data-score="0.2"] { width: 20%; }
+.score-bar[data-score="0.3"] { width: 30%; }
+.score-bar[data-score="0.4"] { width: 40%; }
+.score-bar[data-score="0.5"] { width: 50%; }
+.score-bar[data-score="0.6"] { width: 60%; }
+.score-bar[data-score="0.7"] { width: 70%; }
+.score-bar[data-score="0.8"] { width: 80%; }
+.score-bar[data-score="0.9"] { width: 90%; }
+.score-bar[data-score="1"] { width: 100%; }
+
+/*
+  As regras abaixo para scrollbar-width e scrollbar-color são suportadas apenas em Firefox e Chrome 121+.
+  Para Chrome < 121, Safari, iOS e Samsung Internet, o fallback é feito via ::-webkit-scrollbar, ::-webkit-scrollbar-thumb e ::-webkit-scrollbar-track.
+  Não há impacto negativo: navegadores que não suportam apenas ignoram essas propriedades.
+*/
+
+.autor-img-bg {
+  background: #222;
+}
+
+/* Custom scrollbar for Webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 8px;
+  background: #222;
+}
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+} 
