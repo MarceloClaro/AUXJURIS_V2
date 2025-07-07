@@ -1,6 +1,44 @@
-# Backend do Assistente Jurídico IA
+# Backend AUXJURIS V2
 
-Este é o backend do Assistente Jurídico IA, construído com Node.js, Express e TypeScript.
+## Instalação
+
+1. Instale as dependências:
+   ```sh
+   npm install
+   ```
+
+2. Configure o arquivo `.env`:
+   - Copie `.env.example` ou `.env.new` para `.env`.
+   - Preencha a chave da API Gemini e outras variáveis.
+
+3. Rode o backend:
+   ```sh
+   npm run dev
+   ```
+   (ou `npm start` para produção)
+
+4. Para rodar scripts manualmente:
+   ```sh
+   npx ts-node src/rag_index.ts
+   npx ts-node src/rag_watcher.ts
+   ```
+
+5. Observações para Windows:
+   - Use PowerShell ou CMD.
+   - Rode como administrador se necessário.
+   - Se baixar ZIP, extraia tudo antes de rodar.
+
+6. Problemas comuns:
+   - Porta ocupada: feche processos antigos ou mude a porta no `.env`.
+   - Dependências faltando: rode `npm install`.
+
+7. Rodando backend separado do frontend:
+   - Basta rodar `npm run dev` na pasta backend.
+   - O frontend pode ser rodado em outro terminal na raiz do projeto.
+
+---
+
+Dúvidas? Consulte o README principal ou abra uma issue.
 
 ## Requisitos
 

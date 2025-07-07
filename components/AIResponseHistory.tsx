@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import type { ChatMessage } from '../types';
-import { MessageSender } from '../types';
 import { ArrowDownTrayIcon } from './icons'; // Assuming icons.tsx is in the same directory
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 interface AIResponseHistoryProps {
   aiMessages: ChatMessage[];
@@ -14,9 +14,50 @@ export const AIResponseHistory: React.FC<AIResponseHistoryProps> = ({
   onDownloadCSV,
   onDownloadJSON,
 }) => {
+  const audioRefs = useRef<{ [id: string]: HTMLAudioElement | null }>({});
+  const handlePlayAudio = (msgId: string, audioBase64?: string) => {
+    if (!audioBase64) return;
+    if (!audioRefs.current[msgId]) {
+      audioRefs.current[msgId] = new Audio(`data:audio/mp3;base64,${audioBase64}`);
+    }
+    audioRefs.current[msgId]?.play();
+  };
+
+  const [isResetting, setIsResetting] = useState(false);
+
+  const handleQdrantReset = async () => {
+    if (!window.confirm('Tem certeza que deseja limpar toda a base Qdrant? Esta ação é irreversível!')) return;
+    setIsResetting(true);
+    try {
+      const res = await fetch('/api/qdrant-reset', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        alert('Base Qdrant limpa com sucesso! Reindexe os documentos para continuar.');
+      } else {
+        alert('Falha ao limpar Qdrant: ' + (data.error || 'Erro desconhecido.'));
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert('Erro ao tentar limpar Qdrant: ' + errorMsg);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-gray-800 text-gray-200">
       <header className="p-3 border-b border-gray-700">
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow-lg disabled:opacity-50"
+            onClick={handleQdrantReset}
+            disabled={isResetting}
+            title="Limpar toda a base Qdrant (atenção: ação irreversível!)"
+          >
+            <ExclamationTriangleIcon className="w-5 h-5 text-yellow-300" />
+            {isResetting ? 'Limpando Qdrant...' : 'Limpar Base Qdrant'}
+          </button>
+        </div>
         <h3 className="text-lg font-semibold text-sky-400">Histórico de Respostas da IA</h3>
       </header>
 
@@ -49,6 +90,28 @@ export const AIResponseHistory: React.FC<AIResponseHistoryProps> = ({
             {aiMessages.map((msg) => (
               <li key={msg.id} className="p-3 bg-gray-700/70 rounded-md border border-gray-600 text-sm">
                 <p className="whitespace-pre-wrap text-gray-100">{msg.text}</p>
+                {msg.audio && (
+                  <button
+                    onClick={() => handlePlayAudio(msg.id, msg.audio)}
+                    className="mt-2 px-3 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded text-xs font-semibold"
+                    aria-label="Ouvir resposta da IA"
+                  >
+                    Ouvir Resposta
+                  </button>
+                )}
+                {/* Exibir erro se houver */}
+                {msg.error && (
+                  <div className="mt-2 p-2 bg-red-100 rounded text-red-900 text-xs">
+                    <b>Erro:</b> {msg.error}
+                  </div>
+                )}
+                {/* Exibir resposta bruta se houver */}
+                {msg.rawResponse && (
+                  <div className="mt-2 p-2 bg-gray-200 rounded text-xs text-gray-700 max-h-32 overflow-y-auto">
+                    <b>Resposta bruta do backend:</b>
+                    <pre>{JSON.stringify(msg.rawResponse, null, 2)}</pre>
+                  </div>
+                )}
                 <p className="text-xs mt-1 opacity-70 text-right text-gray-400">
                   {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   {' - '}

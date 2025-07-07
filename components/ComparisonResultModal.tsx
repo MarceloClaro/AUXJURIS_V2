@@ -25,7 +25,7 @@ export const ComparisonResultModal: React.FC<ComparisonResultModalProps> = ({
             Resultado da Comparação
             {docAName && docBName && <span className="text-xs text-gray-400 block">entre "{docAName}" e "{docBName}"</span>}
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-200">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200" aria-label="Fechar modal">
             <XMarkIcon className="w-6 h-6" />
           </button>
         </div>

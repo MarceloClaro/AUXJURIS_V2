@@ -11,7 +11,10 @@ export interface ChatMessage {
   sender: MessageSender;
   text: string;
   timestamp: Date;
+  audio?: string; // Adicionado para suportar áudio opcional
   sources?: { uri: string; title: string }[];
+  rawResponse?: any; // Resposta bruta do backend
+  error?: string; // Erro de backend ou rede
 }
 
 export interface SwotAnalysis {
