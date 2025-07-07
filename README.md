@@ -133,7 +133,8 @@ A arquitetura do AuxJuris V2 é dividida em duas camadas principais: **Frontend*
 *   **Agentes Jurídicos**: Define "personas" de IA com instruções de sistema específicas para diferentes áreas do Direito (e.g., Penal, Administrativo), permitindo respostas mais focadas e precisas.
 *   **Pipeline de Análise PhD**: Um conjunto de endpoints (`/api/analyze/summary`, `/api/analyze/insights`, `/api/analyze/swot`, `/api/process/analyze`) que orquestram chamadas ao LLM para realizar análises complexas em documentos.
 
-```mermaid
+```
+mermaid
 graph TD
     A[Usuário] -->|Interage com| B(Frontend - React/TS);
     B -->|Upload de Documentos| C{Backend - Express};
