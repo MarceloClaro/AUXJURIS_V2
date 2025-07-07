@@ -14,6 +14,88 @@
 
 **AuxJuris V2** é uma aplicação web inovadora, desenvolvida para o setor jurídico, que integra capacidades avançadas de **Inteligência Artificial Generativa** com a robustez da técnica **Retrieval-Augmented Generation (RAG)**. O objetivo central é otimizar a produtividade e a precisão na análise e interação com documentos jurídicos, sejam eles carregados pelo usuário ou provenientes de uma vasta biblioteca jurídica interna.
 
+---
+
+## 🚀 Como Baixar, Instalar e Executar o AuxJuris Localmente
+
+Para configurar e rodar o AuxJuris V2 em sua máquina local, siga os passos abaixo:
+
+### 1. Pré-requisitos
+
+Certifique-se de ter as seguintes ferramentas instaladas:
+
+*   **Git**: Para clonar o repositório.
+*   **Node.js e npm**: Versão LTS recomendada.
+*   **Qdrant**: Baixe o executável do Qdrant para Windows.
+*   **Google Gemini API Key**: Essencial para a funcionalidade RAG e uso do Gemini.
+*   **(Opcional) LM Studio**: Para executar modelos de linguagem localmente.
+
+### 2. Download do Projeto
+
+Se você ainda não tem o projeto, clone-o do GitHub:
+
+```bash
+git clone https://github.com/MarceloClaro/AUXJURIS.git AUXJURIS_V2
+cd AUXJURIS_V2
+```
+
+### 3. Instalação das Dependências
+
+Na raiz do projeto (`AUXJURIS_V2/`), instale as dependências do frontend e do backend:
+
+```bash
+npm install
+cd backend
+npm install
+cd ..
+```
+
+### 4. Configuração das Variáveis de Ambiente
+
+Crie um arquivo `.env` no diretório `backend/` (`AUXJURIS_V2/backend/.env`) e adicione sua chave da API do Google Gemini:
+
+```
+GOOGLE_API_KEY=SUA_CHAVE_DA_API_DO_GOOGLE_AQUI
+PORT=3001
+```
+
+### 5. Configuração e Inicialização do Qdrant
+
+*   Baixe o executável `qdrant.exe` e coloque-o em um local de sua preferência.
+*   **Ajuste o caminho** nos scripts `INICIAR.bat` ou `INICIAR.ps1` para apontar para o local correto do seu `qdrant.exe`.
+
+### 6. Indexação RAG dos Documentos
+
+Primeiro, compile o backend:
+
+```bash
+npm run build:backend
+```
+
+Em seguida, com o Qdrant já rodando, execute o script de indexação:
+
+```bash
+node backend/dist/rag_index.js
+```
+
+Este processo indexará os documentos jurídicos para o funcionamento do RAG.
+
+### 7. Execução da Aplicação
+
+Na raiz do projeto, execute um dos scripts para iniciar todos os serviços (Qdrant, Backend e Frontend):
+
+*   **No Windows (via Prompt de Comando):**
+    Dê um duplo clique no arquivo `INICIAR.bat`.
+
+*   **No Windows (via PowerShell):**
+    Abra o PowerShell no diretório do projeto e execute:
+    ```powershell
+    .\INICIAR.ps1
+    ```
+
+Após a inicialização, o frontend estará acessível em seu navegador (geralmente `http://localhost:5173`).
+
+---
 ### Principais Funcionalidades:
 
 *   **Sumarização e Extração de Insights**: Geração automática de resumos e identificação de pontos-chave em documentos.
